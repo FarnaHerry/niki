@@ -13,6 +13,7 @@
 
 #include "ui/icons.h"
 #include "ui/theme.h"
+#include "ui/ui.h"
 
 using namespace huxerui;
 
@@ -37,13 +38,26 @@ namespace {
   return Text(std::move(text), TextRole::Label).With(Opacity(0.4F), Padding(4.0F));
 }
 
+
 [[huxerui::composable]]
 View Designer() {
   auto dark = UseState(false);
   auto path = UseState(TextEditingValue::FromText("counter_page.hui.json"));
-  auto status = UseState(std::string("welcome — the panels are ported island by island"));
+  auto document = UseState(hui::doc::StarterDocument("CounterPage"));
+  auto selection = UseState(std::string(""));
+  auto status = UseState(std::string("welcome — click a component in the palette"));
+  auto history = UseState(hui::doc::History{});
+  auto drop_hint = UseState(std::string(""));
 
   const hui::theme::Palette palette = dark.Get() ? hui::theme::DarkPalette() : hui::theme::LightPalette();
+  const hui::ui::Editor ed{
+      .document = document,
+      .selection = selection,
+      .status = status,
+      .history = history,
+      .drop_hint = drop_hint,
+      .palette = palette,
+  };
   const WindowHandle window = UseWindow();
 
   View body = Column{
@@ -51,7 +65,7 @@ View Designer() {
       // adding a second set of window buttons or reserving a caption area.
       WindowTitleBar{
           Text("hui", TextRole::Title),
-          Text("HuxerUI Designer", TextRole::Label).With(Opacity(0.6F)),
+          Text(document.Get().name, TextRole::Label).With(Opacity(0.6F)),
           Spacer(),
           hui::icons::Action(hui::icons::Theme(), dark.Get() ? "Use light theme" : "Use dark theme")
               .OnClick([dark] { dark = !dark.Get(); }),
@@ -68,28 +82,30 @@ View Designer() {
               .Placeholder("document path (.hui.json)")
               .OnChanged([path](const TextEditingValue& next) { path = next; })
               .With(Grow(1.0F)),
-          hui::icons::Action(hui::icons::New(), "New document").OnClick([status] {
-            status = std::string("new document");
+          hui::icons::Action(hui::icons::New(), "New document").OnClick([ed, path] {
+            ed.Replace(hui::doc::StarterDocument("NewPage"), "new document");
+            path = TextEditingValue::FromText("new_page.hui.json");
           }),
-          hui::icons::Action(hui::icons::Open(), "Open document").OnClick([status] {
-            status = std::string("open document");
-          }),
-          hui::icons::Action(hui::icons::Save(), "Save document").OnClick([status] {
-            status = std::string("save document");
-          }),
-          hui::icons::Action(hui::icons::Export(), "Export C++ module").OnClick([status] {
-            status = std::string("export C++ module");
-          }),
+          hui::icons::Action(hui::icons::Open(), "Open document").OnClick([ed, path] { ed.Open(path.Get().text); }),
+          hui::icons::Action(hui::icons::Save(), "Save document").OnClick([ed, path] { ed.Save(path.Get().text); }),
+          hui::icons::Action(hui::icons::Export(), "Export C++ module")
+              .OnClick([ed, path] { ed.Export(path.Get().text); }),
           Divider(Axis::Vertical).With(Frame{.height = 20.0F}),
-          hui::icons::Action(hui::icons::Undo(), "Undo").OnClick([status] { status = std::string("undo"); }),
-          hui::icons::Action(hui::icons::Redo(), "Redo").OnClick([status] { status = std::string("redo"); }),
+          hui::icons::Action(hui::icons::Undo(), "Undo").OnClick([ed] { ed.Undo(); }),
+          hui::icons::Action(hui::icons::Redo(), "Redo").OnClick([ed] { ed.Redo(); }),
       }.With(Spacing(6.0F), Padding(EdgeInsets{.top = 4.0F, .right = 10.0F, .bottom = 4.0F, .left = 10.0F}),
              CrossAlign(CrossAxisAlignment::Center), Background(palette.bar_bg)),
 
       // Content islands: components+structure | canvas | inspector, over the code island.
       Column{
           Row{
-              Island("Components", "left · 260", RegionPlaceholder("palette + structure region"), palette)
+              Island("Components", "left · 260",
+                     Column{
+                         hui::ui::PaletteView(ed),
+                         Divider(),
+                         hui::ui::StructureView(ed),
+                     }.With(Spacing(8.0F)),
+                     palette)
                   .With(Frame{.width = 260.0F}),
               Island("Canvas", "centre · grow", RegionPlaceholder("canvas region"), palette).With(Grow(1.0F)),
               Island("Inspector", "right · 320", RegionPlaceholder("inspector region"), palette)
@@ -102,9 +118,12 @@ View Designer() {
 
       // Status line.
       Row{
-          Text(status.Get(), TextRole::Label),
+          Text(ed.status.Get(), TextRole::Label),
           Spacer(),
-          Text(std::format("hui 0.1.0 · {}", dark.Get() ? "dark" : "light"), TextRole::Label).With(Opacity(0.5F)),
+          Text(std::format("{} node(s) · {} · {}", hui::doc::AllIds(document.Get().root).size(),
+                           document.Get().name, dark.Get() ? "dark" : "light"),
+               TextRole::Label)
+              .With(Opacity(0.5F)),
       }.With(Spacing(12.0F), Padding(EdgeInsets{.top = 6.0F, .right = 12.0F, .bottom = 8.0F, .left = 12.0F}),
              CrossAlign(CrossAxisAlignment::Center)),
   }.With(Background(palette.app_bg), CrossAlign(CrossAxisAlignment::Stretch));
