@@ -10,6 +10,7 @@
 #include <format>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "ui/icons.h"
 #include "ui/theme.h"
@@ -48,30 +49,34 @@ namespace {
 [[huxerui::composable]]
 View Designer() {
   auto dark = UseState(false);
-  auto path = UseState(TextEditingValue::FromText("counter_page.hui.json"));
-  auto document = UseState(hui::doc::StarterDocument("CounterPage"));
-  auto selection = UseState(std::string(""));
+  std::vector<hui::ui::Page> initial_pages;
+  initial_pages.push_back(hui::ui::StarterPage("CounterPage", "counter_page.hui.json"));
+  auto pages = UseStateList(std::move(initial_pages));
+  auto active = UseState(std::size_t{0});
   auto status = UseState(std::string("welcome — click a component in the palette"));
-  auto history = UseState(hui::doc::History{});
   auto drop_hint = UseState(std::string(""));
+  // The path field is the one thing the shell keeps per page rather than reading
+  // from it, because a TextField holds the caret as well as the text. Every tab
+  // switch, open, and new page re-points it through SyncPath.
+  auto path = UseState(TextEditingValue::FromText("counter_page.hui.json"));
 
   const hui::theme::Palette palette = dark.Get() ? hui::theme::DarkPalette() : hui::theme::LightPalette();
   const hui::ui::Editor ed{
-      .document = document,
-      .selection = selection,
+      .pages = pages,
+      .active = active,
       .status = status,
-      .history = history,
       .drop_hint = drop_hint,
       .palette = palette,
   };
   const WindowHandle window = UseWindow();
+  const auto sync_path = [ed, path] { path = TextEditingValue::FromText(ed.Current().path); };
 
   View body = Column{
       // Title bar. caption_controls = Application keeps the framework from
       // adding a second set of window buttons or reserving a caption area.
       WindowTitleBar{
           Text("hui", TextRole::Title),
-          Text(document.Get().name, TextRole::Label).With(Opacity(0.6F)),
+          Text(ed.Current().title, TextRole::Label).With(Opacity(0.6F)),
           Spacer(),
           hui::icons::Action(hui::icons::Theme(), dark.Get() ? "Use light theme" : "Use dark theme")
               .OnClick([dark] { dark = !dark.Get(); }),
@@ -82,17 +87,24 @@ View Designer() {
       }.With(Spacing(6.0F), Padding(EdgeInsets{.top = 4.0F, .right = 6.0F, .bottom = 4.0F, .left = 10.0F}),
              Background(palette.bar_bg)),
 
+      // One tab per page. Everything below this strip shows the active page.
+      hui::ui::TabStripView(ed, sync_path),
+
       // File and edit toolbar.
       Row{
           TextField(path.Get())
               .Placeholder("document path (.hui.json)")
               .OnChanged([path](const TextEditingValue& next) { path = next; })
               .With(Grow(1.0F)),
-          hui::icons::Action(hui::icons::New(), "New document").OnClick([ed, path] {
-            ed.Replace(hui::doc::StarterDocument("NewPage"), "new document");
-            path = TextEditingValue::FromText("new_page.hui.json");
+          hui::icons::Action(hui::icons::New(), "New page").OnClick([ed, sync_path] {
+            ed.NewPage();
+            sync_path();
           }),
-          hui::icons::Action(hui::icons::Open(), "Open document").OnClick([ed, path] { ed.Open(path.Get().text); }),
+          hui::icons::Action(hui::icons::Open(), "Open document in a new tab")
+              .OnClick([ed, path, sync_path] {
+                ed.Open(path.Get().text);
+                sync_path();
+              }),
           hui::icons::Action(hui::icons::Save(), "Save document").OnClick([ed, path] { ed.Save(path.Get().text); }),
           hui::icons::Action(hui::icons::Export(), "Export C++ module")
               .OnClick([ed, path] { ed.Export(path.Get().text); }),
@@ -125,10 +137,11 @@ View Designer() {
 
       // Status line.
       Row{
-          Text(ed.status.Get(), TextRole::Label),
+          Text(ed.Status(), TextRole::Label),
           Spacer(),
-          Text(std::format("{} node(s) · {} · {}", hui::doc::AllIds(document.Get().root).size(),
-                           document.Get().name, dark.Get() ? "dark" : "light"),
+          Text(std::format("{} node(s) · page {}/{} · {} · {}", hui::doc::AllIds(ed.Document().root).size(),
+                           ed.ActiveIndex() + 1, pages.Size(), ed.Current().title,
+                           dark.Get() ? "dark" : "light"),
                TextRole::Label)
               .With(Opacity(0.5F)),
       }.With(Spacing(12.0F), Padding(EdgeInsets{.top = 6.0F, .right = 12.0F, .bottom = 8.0F, .left = 12.0F}),

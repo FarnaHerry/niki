@@ -26,10 +26,10 @@ namespace {
                                .left = 4.0F + static_cast<float>(depth) * 14.0F}),
             CrossAlign(CrossAxisAlignment::Center), CornerRadius(4.0F))
       .OnClick([ed, id] {
-        ed.selection = id;
-        ed.status = "selected " + id;
+        ed.Select(id);
+        ed.SetStatus("selected " + id);
       });
-  if (ed.selection.Get() == id) {
+  if (ed.Selection() == id) {
     row = std::move(row).With(Background(ed.palette.accent_soft));
   }
   return std::move(row).Key(id);
@@ -45,7 +45,7 @@ void RowsFor(const Editor& ed, const doc::Node& node, std::size_t depth, std::ve
 }  // namespace
 
 View StructureView(const Editor& ed) {
-  const doc::Document& document = ed.document.Get();
+  const doc::Document& document = ed.Document();
 
   std::vector<View> rows;
   RowsFor(ed, document.root, 0, rows);

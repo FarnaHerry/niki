@@ -1,48 +1,179 @@
 #include "ui/ui.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <filesystem>
+#include <format>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 import hui.core.codegen;
 import hui.core.docio;
 
 namespace hui::ui {
+namespace {
 
-void Editor::Apply(doc::Document next) const {
-  const doc::Document current = document.Get();
-  history.Update([&current](doc::History& value) { doc::Commit(value, current); });
-  document = std::move(next);
+/// The tab label for a path: the file stem, or the document's own name when the
+/// page has never been saved.
+[[nodiscard]] std::string TitleFor(const std::string& path, const doc::Document& document) {
+  if (path.empty()) {
+    return document.name;
+  }
+  std::string stem = std::filesystem::path(path).stem().string();
+  return stem.empty() ? document.name : stem;
 }
 
-void Editor::Replace(doc::Document next, std::string message) const {
-  Apply(std::move(next));
-  selection = std::string();
-  status = std::move(message);
+/// "NewPage" -> "new_page", so a page's default file name follows the CLI's.
+[[nodiscard]] std::string SnakeCase(std::string_view name) {
+  std::string out;
+  out.reserve(name.size());
+  for (const char ch : name) {
+    out.push_back(ch >= 'A' && ch <= 'Z' ? static_cast<char>(ch - 'A' + 'a') : ch);
+  }
+  return out;
+}
+
+/// Every path the page remembers is normalised the same way, so opening the same
+/// file twice cannot look like two different pages.
+[[nodiscard]] std::string Normalize(const std::string& file) {
+  return std::filesystem::path(file).lexically_normal().string();
+}
+
+}  // namespace
+
+Page StarterPage(std::string title, std::string path) {
+  Page page;
+  page.document = doc::StarterDocument(title.empty() ? std::string("NewPage") : title);
+  page.path = std::move(path);
+  page.title = title.empty() ? TitleFor(page.path, page.document) : std::move(title);
+  return page;
+}
+
+std::size_t Editor::ActiveIndex() const {
+  const std::size_t count = pages.Size();
+  if (count == 0) {
+    throw std::logic_error("hui: the designer always has at least one page");
+  }
+  return std::min(active.Get(), count - 1);
+}
+
+const Page& Editor::Current() const { return pages.At(ActiveIndex()); }
+
+const doc::Document& Editor::Document() const { return Current().document; }
+
+const std::string& Editor::Selection() const { return Current().selection; }
+
+const std::string& Editor::Status() const { return status.Get(); }
+
+const std::string& Editor::Hint() const { return drop_hint.Get(); }
+
+void Editor::Edit(const std::function<void(Page&)>& mutate) const {
+  Page page = Current();
+  mutate(page);
+  pages.Set(ActiveIndex(), std::move(page));
+}
+
+void Editor::Select(std::string id) const {
+  Edit([&id](Page& page) { page.selection = std::move(id); });
+}
+
+void Editor::SetStatus(std::string message) const { status = std::move(message); }
+
+void Editor::SetHint(std::string id) const { drop_hint = std::move(id); }
+
+void Editor::Apply(doc::Document next) const {
+  Edit([&next](Page& page) {
+    doc::Commit(page.history, page.document);
+    page.document = std::move(next);
+    page.dirty = true;
+  });
+}
+
+void Editor::AddPage(std::string title, std::string path, doc::Document document) const {
+  Page page;
+  page.document = std::move(document);
+  page.path = std::move(path);
+  page.title = title.empty() ? TitleFor(page.path, page.document) : std::move(title);
+  pages.PushBack(std::move(page));
+  active = pages.Size() - 1;
+  drop_hint = std::string();
+}
+
+void Editor::NewPage() const {
+  const std::string name = std::format("Page{}", pages.Size() + 1);
+  AddPage(name, SnakeCase(name) + ".hui.json", doc::StarterDocument(name));
+  status = std::format("new page {}", name);
+}
+
+void Editor::Activate(std::size_t index) const {
+  if (index >= pages.Size()) {
+    return;
+  }
+  active = index;
+  drop_hint = std::string();
+}
+
+void Editor::ClosePage(std::size_t index) const {
+  const std::size_t count = pages.Size();
+  if (index >= count) {
+    return;
+  }
+  if (count == 1) {
+    pages.Set(0, StarterPage("NewPage", "new_page.hui.json"));
+    active = std::size_t{0};
+    drop_hint = std::string();
+    status = std::string("closed the last page; started a new document");
+    return;
+  }
+  pages.Erase(index);
+  // The active page keeps its identity across a close: removing an earlier page
+  // shifts it down by one, removing the active page leaves the index pointing at
+  // the page that took its place.
+  const std::size_t current = active.Get();
+  if (current >= pages.Size()) {
+    active = pages.Size() - 1;
+  } else if (index < current) {
+    active = current - 1;
+  }
+  drop_hint = std::string();
+  status = std::format("closed page {}", index + 1);
+}
+
+void Editor::RenameActive(std::string title) const {
+  Edit([&title](Page& page) {
+    page.title = std::move(title);
+    page.dirty = true;
+  });
 }
 
 void Editor::Undo() const {
-  const doc::Document current = document.Get();
-  std::optional<doc::Document> previous;
-  history.Update([&](doc::History& value) { previous = doc::Undo(value, current); });
-  if (!previous.has_value()) {
-    status = std::string("nothing to undo");
-    return;
-  }
-  document = std::move(*previous);
-  status = std::string("undo");
+  bool moved = false;
+  Edit([&moved](Page& page) {
+    const std::optional<doc::Document> previous = doc::Undo(page.history, page.document);
+    if (!previous.has_value()) {
+      return;
+    }
+    page.document = *previous;
+    page.dirty = true;
+    moved = true;
+  });
+  status = moved ? std::string("undo") : std::string("nothing to undo");
 }
 
 void Editor::Redo() const {
-  const doc::Document current = document.Get();
-  std::optional<doc::Document> next;
-  history.Update([&](doc::History& value) { next = doc::Redo(value, current); });
-  if (!next.has_value()) {
-    status = std::string("nothing to redo");
-    return;
-  }
-  document = std::move(*next);
-  status = std::string("redo");
+  bool moved = false;
+  Edit([&moved](Page& page) {
+    const std::optional<doc::Document> next = doc::Redo(page.history, page.document);
+    if (!next.has_value()) {
+      return;
+    }
+    page.document = *next;
+    page.dirty = true;
+    moved = true;
+  });
+  status = moved ? std::string("redo") : std::string("nothing to redo");
 }
 
 void Editor::Open(const std::string& file) const {
@@ -50,12 +181,21 @@ void Editor::Open(const std::string& file) const {
     status = std::string("set a document path first");
     return;
   }
+  const std::string path = Normalize(file);
+  for (std::size_t index = 0; index < pages.Size(); ++index) {
+    if (pages.At(index).path == path) {
+      Activate(index);
+      status = "switched to " + file;
+      return;
+    }
+  }
   auto loaded = io::LoadDocument(file);
   if (!loaded.has_value()) {
     status = loaded.error();
     return;
   }
-  Replace(std::move(*loaded), "loaded " + file);
+  AddPage(std::string(), path, std::move(*loaded));
+  status = "opened " + file;
 }
 
 void Editor::Save(const std::string& file) const {
@@ -63,8 +203,17 @@ void Editor::Save(const std::string& file) const {
     status = std::string("set a document path first");
     return;
   }
-  const auto saved = io::SaveDocument(document.Get(), file);
-  status = saved.has_value() ? "saved " + file : saved.error();
+  const auto saved = io::SaveDocument(Document(), file);
+  if (!saved.has_value()) {
+    status = saved.error();
+    return;
+  }
+  Edit([&file](Page& page) {
+    page.path = Normalize(file);
+    page.title = TitleFor(page.path, page.document);
+    page.dirty = false;
+  });
+  status = "saved " + file;
 }
 
 void Editor::Export(const std::string& file) const {
@@ -73,9 +222,10 @@ void Editor::Export(const std::string& file) const {
     return;
   }
   const std::filesystem::path cpp_path = std::filesystem::path(file).replace_extension(".cppm");
-  const std::string code = codegen::GenerateCpp(
-      document.Get(),
-      {.style = codegen::Style::Module, .source_name = std::filesystem::path(file).filename().string()});
+  const std::string code =
+      codegen::GenerateCpp(Document(),
+                           {.style = codegen::Style::Module,
+                            .source_name = std::filesystem::path(file).filename().string()});
   const auto written = io::WriteTextFile(code, cpp_path);
   status = written.has_value() ? "exported " + cpp_path.string() : written.error();
 }

@@ -298,40 +298,39 @@ namespace {
     view = std::move(view)
                .With(DropTarget::Accepts<DropPayload>())
                .On<DropEvents<DropPayload>::Entered>(
-                   [drop_hint = ed.drop_hint, parent_id](const DropPayload&, const DropEvent&) {
-                     drop_hint = parent_id;
-                   })
+                   [ed, parent_id](const DropPayload&, const DropEvent&) { ed.SetHint(parent_id); })
                .On<DropEvents<DropPayload>::Exited>(
-                   [drop_hint = ed.drop_hint, parent_id](const DropPayload&, const DropEvent&) {
-                     if (drop_hint.Get() == parent_id) {
-                       drop_hint = "";
+                   [ed, parent_id](const DropPayload&, const DropEvent&) {
+                     if (ed.Hint() == parent_id) {
+                       ed.SetHint(std::string());
                      }
                    })
                .On<DropEvents<DropPayload>::Dropped>(
-                   [document = ed.document, ed, parent_id](const DropPayload& payload, const DropEvent&) {
-                     doc::Document next = document.Get();
+                   [ed, parent_id](const DropPayload& payload, const DropEvent&) {
+                     doc::Document next = ed.Document();
                      const std::string new_id = doc::NextId(next);
                      const doc::OperationResult result =
                          payload.move
                              ? doc::MoveNode(next, payload.ref, parent_id)
                              : doc::AddChild(next, parent_id, doc::MakeNode(payload.ref, new_id));
                      if (!result.ok) {
-                       ed.status = result.error;
+                       ed.SetStatus(result.error);
                        return;
                      }
                      ed.Apply(std::move(next));
-                     ed.status = payload.move ? std::format("moved {} into {}", payload.ref, parent_id)
-                                              : std::format("added {} as {} under {}", payload.ref, new_id, parent_id);
+                     ed.SetStatus(payload.move ? std::format("moved {} into {}", payload.ref, parent_id)
+                                               : std::format("added {} as {} under {}", payload.ref, new_id,
+                                                             parent_id));
                    });
-    if (ed.drop_hint.Get() == node.id) {
+    if (ed.Hint() == node.id) {
       view = std::move(view).With(Background(ed.palette.accent_soft));
     }
   }
 
   // Selection chrome last, so it is not covered by a container's drop tint.
   const std::string id = node.id;
-  view = std::move(view).OnClick([selection = ed.selection, id] { selection = id; });
-  if (ed.selection.Get() == node.id) {
+  view = std::move(view).OnClick([ed, id] { ed.Select(id); });
+  if (ed.Selection() == node.id) {
     view = std::move(view).With(Border{.color = ed.palette.accent, .width = 2.0F}, CornerRadius(4.0F));
   }
 
@@ -341,8 +340,8 @@ namespace {
 }  // namespace
 
 View CanvasView(const Editor& ed) {
-  const doc::Document& document = ed.document.Get();
-  const std::string selected = ed.selection.Get();
+  const doc::Document& document = ed.Document();
+  const std::string selected = ed.Selection();
   const doc::Node* selected_node = selected.empty() ? nullptr : doc::FindNode(document, selected);
 
   View device = BuildNode(ed, document.root);

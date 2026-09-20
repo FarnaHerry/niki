@@ -14,9 +14,9 @@ namespace {
 /// Appends one component: into the selected container when it accepts children,
 /// otherwise under the document root.
 void AddComponent(const Editor& ed, const std::string& type) {
-  doc::Document next = ed.document.Get();
+  doc::Document next = ed.Document();
   std::string parent = next.root.id;
-  const std::string selected = ed.selection.Get();
+  const std::string selected = ed.Selection();
   if (const doc::Node* node = selected.empty() ? nullptr : doc::FindNode(next, selected)) {
     const catalog::ComponentDef* def = catalog::Find(node->type);
     if (def != nullptr &&
@@ -28,12 +28,12 @@ void AddComponent(const Editor& ed, const std::string& type) {
   const std::string id = doc::NextId(next);
   const doc::OperationResult result = doc::AddChild(next, parent, doc::MakeNode(type, id));
   if (!result.ok) {
-    ed.status = result.error;
+    ed.SetStatus(result.error);
     return;
   }
   ed.Apply(std::move(next));
-  ed.selection = id;
-  ed.status = std::format("added {} as {} under {}", type, id, parent);
+  ed.Select(id);
+  ed.SetStatus(std::format("added {} as {} under {}", type, id, parent));
 }
 
 /// One palette card. Clicking appends the component to the selected container;
