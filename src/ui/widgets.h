@@ -10,6 +10,8 @@
 
 #include <huxerui/huxerui.h>
 
+#include "ui/ui.h"
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -28,12 +30,14 @@ namespace hui::ui {
             huxerui::Padding(3.0F));
 }
 
-[[nodiscard]] huxerui::View StringField(std::string placeholder, std::string current,
+/// Fields that take typed text report their keyboard focus to the editor, which
+/// is how the shell knows to leave Delete and undo to the field.
+[[nodiscard]] huxerui::View StringField(const Editor& ed, std::string placeholder, std::string current,
                                         std::function<void(std::string)> commit);
 
 /// Numeric field. Empty text means "unset", which is how an optional value is
 /// removed again.
-[[nodiscard]] huxerui::View NumberField(std::string placeholder, bool set, double current,
+[[nodiscard]] huxerui::View NumberField(const Editor& ed, std::string placeholder, bool set, double current,
                                         std::function<void(std::optional<double>)> commit);
 
 [[nodiscard]] huxerui::View BoolField(bool current, std::function<void(bool)> commit);
@@ -43,7 +47,7 @@ namespace hui::ui {
                                       std::function<void(std::string)> commit);
 
 /// Comma-separated editor for list-valued properties.
-[[nodiscard]] huxerui::View StrListField(std::vector<std::string> current,
+[[nodiscard]] huxerui::View StrListField(const Editor& ed, std::vector<std::string> current,
                                          std::function<void(std::vector<std::string>)> commit);
 
 }  // namespace hui::ui

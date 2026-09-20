@@ -78,11 +78,36 @@ void Editor::Edit(const std::function<void(Page&)>& mutate) const {
 
 void Editor::Select(std::string id) const {
   Edit([&id](Page& page) { page.selection = std::move(id); });
+  // Choosing a node means the keyboard is working on the canvas again, whatever
+  // field had it before.
+  focused_fields = 0;
 }
 
 void Editor::SetStatus(std::string message) const { status = std::move(message); }
 
 void Editor::SetHint(std::string id) const { drop_hint = std::move(id); }
+
+bool Editor::Editing() const { return focused_fields.Get() > 0; }
+
+void Editor::FocusField(bool focused) const {
+  focused_fields.Update([focused](int& count) { count = std::max(0, count + (focused ? 1 : -1)); });
+}
+
+void Editor::DeleteSelected() const {
+  const std::string id = Selection();
+  if (id.empty()) {
+    return;
+  }
+  doc::Document next = Document();
+  const doc::OperationResult result = doc::RemoveNode(next, id);
+  if (!result.ok) {
+    status = result.error;
+    return;
+  }
+  Apply(std::move(next));
+  Select(std::string());
+  status = "deleted " + id;
+}
 
 void Editor::Apply(doc::Document next) const {
   Edit([&next](Page& page) {

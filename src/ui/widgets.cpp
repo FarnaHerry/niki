@@ -14,23 +14,35 @@
 using namespace huxerui;
 
 namespace hui::ui {
+namespace {
+
+/// Reports a field's keyboard focus to the editor. A count rather than a flag,
+/// so two fields exchanging focus in either order still ends up right.
+[[nodiscard]] View TrackFocus(View field, const Editor& ed) {
+  return std::move(field).On<ViewEvents::FocusChanged>(
+      [ed](bool focused) { ed.FocusField(focused); });
+}
+
+}  // namespace
 
 [[huxerui::composable]]
-View StringField(std::string placeholder, std::string current, std::function<void(std::string)> commit) {
+View StringField(const Editor& ed, std::string placeholder, std::string current,
+                 std::function<void(std::string)> commit) {
   auto value = UseState(TextEditingValue::FromText(current));
-  return TextField(value.Get())
-      .Placeholder(std::move(placeholder))
-      .OnChanged([value, commit = std::move(commit)](const TextEditingValue& next) mutable {
-        value = next;
-        commit(next.text);
-      });
+  return TrackFocus(TextField(value.Get())
+                        .Placeholder(std::move(placeholder))
+                        .OnChanged([value, commit = std::move(commit)](const TextEditingValue& next) mutable {
+                          value = next;
+                          commit(next.text);
+                        }),
+                    ed);
 }
 
 [[huxerui::composable]]
-View NumberField(std::string placeholder, bool set, double current,
+View NumberField(const Editor& ed, std::string placeholder, bool set, double current,
                  std::function<void(std::optional<double>)> commit) {
   auto value = UseState(TextEditingValue::FromText(set ? std::format("{}", current) : std::string()));
-  return TextField(value.Get())
+  return TrackFocus(TextField(value.Get())
       .Placeholder(std::move(placeholder))
       .OnChanged([value, commit = std::move(commit)](const TextEditingValue& next) mutable {
         value = next;
@@ -44,7 +56,8 @@ View NumberField(std::string placeholder, bool set, double current,
         if (error == std::errc{} && pointer == text.data() + text.size()) {
           commit(parsed);
         }
-      });
+      }),
+                    ed);
 }
 
 [[huxerui::composable]]
@@ -67,12 +80,13 @@ View EnumField(std::vector<std::string> values, std::string current, std::functi
 }
 
 [[huxerui::composable]]
-View StrListField(std::vector<std::string> current, std::function<void(std::vector<std::string>)> commit) {
+View StrListField(const Editor& ed, std::vector<std::string> current,
+                   std::function<void(std::vector<std::string>)> commit) {
   auto value = UseState(TextEditingValue::FromText(std::ranges::fold_left(
       current, std::string(), [](const std::string& accumulated, const std::string& item) {
         return accumulated.empty() ? item : accumulated + ", " + item;
       })));
-  return TextField(value.Get())
+  return TrackFocus(TextField(value.Get())
       .Placeholder("Option A, Option B")
       .OnChanged([value, commit = std::move(commit)](const TextEditingValue& next) mutable {
         value = next;
@@ -87,7 +101,8 @@ View StrListField(std::vector<std::string> current, std::function<void(std::vect
           }
         }
         commit(std::move(items));
-      });
+      }),
+                    ed);
 }
 
 }  // namespace hui::ui

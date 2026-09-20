@@ -75,6 +75,9 @@ struct Editor final {
   huxerui::State<std::string> status;
   huxerui::State<std::string> drop_hint;  // container highlighted by a drag
   huxerui::State<ResizeGesture> resize;
+  /// How many text fields currently hold keyboard focus. The shell's shortcuts
+  /// stand down while this is set, so Delete while typing never removes a node.
+  huxerui::State<int> focused_fields;
   std::shared_ptr<NodeMetrics> metrics;  // where the canvas reports node sizes
   theme::Palette palette;
 
@@ -93,6 +96,13 @@ struct Editor final {
   void Select(std::string id) const;
   void SetStatus(std::string message) const;
   void SetHint(std::string id) const;
+  [[nodiscard]] bool Editing() const;
+  /// Reports a text field taking or losing the keyboard, which is what decides
+  /// whether the shell's Delete and undo shortcuts apply.
+  void FocusField(bool focused) const;
+  /// Removes the selected node and clears the selection. The root survives: the
+  /// engine refuses to remove it and the refusal is reported instead.
+  void DeleteSelected() const;
 
   /// Publishes a mutated document: the outgoing version is snapshotted into the
   /// active page's history first, so every panel action is undoable.

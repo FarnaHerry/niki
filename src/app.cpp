@@ -22,6 +22,26 @@ using namespace huxerui;
 
 namespace {
 
+/// A single-child layout that hands its constraints straight through. It exists
+/// so the application root can be an ordinary View: the theme wrapper is an
+/// environment node, and an environment node cannot carry view behaviour, but a
+/// window-level shortcut has to be bound where the focus route begins — with
+/// nothing focused, that route is the view the application returns and nothing
+/// below it.
+class ShortcutHost final : public Layout<ShortcutHost> {
+ public:
+  using Layout::Layout;
+
+  static LayoutResult Measure(LayoutContext& context, ViewNode& node, Constraints constraints) {
+    LayoutResult result;
+    if (node.ChildCount() == 1) {
+      static_cast<void>(context.Measure(node.ChildAt(0), constraints));
+      result.Place(node.ChildAt(0), {});
+    }
+    return result.SetSize(constraints.Constrain({constraints.max_width, constraints.max_height}));
+  }
+};
+
 /// One floating panel: rounded surface, hairline border, header, then body.
 /// The body stretches, and scrolls when `scroll` is set — a panel taller than
 /// the window scrolls instead of pushing the row it sits in. A panel that
@@ -53,6 +73,7 @@ View Designer() {
   auto status = UseState(std::string("welcome — click a component in the palette"));
   auto drop_hint = UseState(std::string(""));
   auto resize = UseState(hui::ui::ResizeGesture{});
+  auto focused_fields = UseState(0);
   // Held in a State so the table survives recomposition: the canvas writes the
   // measured size of every node into it, and a resize gesture reads it back.
   auto metrics = UseState(std::make_shared<hui::ui::NodeMetrics>());
@@ -64,6 +85,7 @@ View Designer() {
       .status = status,
       .drop_hint = drop_hint,
       .resize = resize,
+      .focused_fields = focused_fields,
       .metrics = metrics.Get(),
       .palette = palette,
   };
@@ -156,12 +178,35 @@ View Designer() {
               .With(Opacity(0.5F)),
       }.With(Spacing(12.0F), Padding(EdgeInsets{.top = 6.0F, .right = 12.0F, .bottom = 8.0F, .left = 12.0F}),
              CrossAlign(CrossAxisAlignment::Center)),
-  }.With(Background(palette.app_bg), CrossAlign(CrossAxisAlignment::Stretch));
-
-  if (dark.Get()) {
-    return MaterialDarkTheme(std::move(body));
   }
-  return MaterialTheme(std::move(body));
+      .With(Background(palette.app_bg), CrossAlign(CrossAxisAlignment::Stretch));
+
+  // Only one branch runs, so `body` is moved exactly once.
+  View themed = dark.Get() ? View(MaterialDarkTheme(std::move(body))) : View(MaterialTheme(std::move(body)));
+
+  // Shortcuts. KeyIntercept is offered along the focus route before any
+  // component sees the key, so it has to sit on the application root — and the
+  // root has to be a layout rather than the theme, hence the pass-through host.
+  return ShortcutHost{std::move(themed)}
+      .With(Background(palette.app_bg))
+      .On<ViewEvents::KeyIntercept>([ed](const KeyEvent& event) {
+    if (event.type != KeyEventType::Down || event.repeat || ed.Editing()) {
+      return false;
+    }
+    if (event.modifiers.control && event.key == Key::Z) {
+      if (event.modifiers.shift) {
+        ed.Redo();
+      } else {
+        ed.Undo();
+      }
+      return true;
+    }
+    if (event.key == Key::Delete && !ed.Selection().empty()) {
+      ed.DeleteSelected();
+      return true;
+    }
+    return false;
+  });
 }
 
 }  // namespace

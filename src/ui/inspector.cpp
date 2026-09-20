@@ -46,7 +46,7 @@ void ApplyValue(const Editor& ed, const std::string& id, const std::string& key,
   switch (prop.kind) {
     case catalog::PropKind::Text: {
       const std::string current = modifier ? doc::ModifierText(node, key) : doc::TextOf(node, key);
-      return StringField(key, current, [ed, id, key, modifier](std::string next) {
+      return StringField(ed, key, current, [ed, id, key, modifier](std::string next) {
         ApplyValue(ed, id, key, doc::PropValue(std::move(next)), modifier);
       }).Key(field_key);
     }
@@ -54,7 +54,7 @@ void ApplyValue(const Editor& ed, const std::string& id, const std::string& key,
       const bool set = modifier ? doc::HasModifier(node, key) : doc::NumberSet(node, key);
       const double current =
           modifier ? doc::ModifierNumber(node, key, 0.0) : doc::NumberOf(node, key, 0.0);
-      return NumberField(key, set, current, [ed, id, key, modifier](std::optional<double> next) {
+      return NumberField(ed, key, set, current, [ed, id, key, modifier](std::optional<double> next) {
         ApplyValue(ed, id, key,
                    next.has_value() ? doc::PropValue(*next) : doc::PropValue(std::monostate{}), modifier);
       }).Key(field_key);
@@ -75,13 +75,13 @@ void ApplyValue(const Editor& ed, const std::string& id, const std::string& key,
       }).Key(field_key);
     }
     case catalog::PropKind::StrList: {
-      return StrListField(doc::ListOf(node, key), [ed, id, key, modifier](std::vector<std::string> next) {
+      return StrListField(ed, doc::ListOf(node, key), [ed, id, key, modifier](std::vector<std::string> next) {
         ApplyValue(ed, id, key, doc::PropValue(std::move(next)), modifier);
       }).Key(field_key);
     }
     case catalog::PropKind::Color: {
       const std::string current = modifier ? doc::ModifierText(node, key) : doc::TextOf(node, key);
-      return StringField("#RRGGBB", current, [ed, id, key, modifier](std::string next) {
+      return StringField(ed, "#RRGGBB", current, [ed, id, key, modifier](std::string next) {
         ApplyValue(ed, id, key, doc::PropValue(std::move(next)), modifier);
       }).Key(field_key);
     }
@@ -117,7 +117,7 @@ void ApplyValue(const Editor& ed, const std::string& id, const std::string& key,
                             });
                           }).Key(id + "#e:" + key)));
   if (bound) {
-    rows.push_back(FieldRow("handler", StringField("name, or empty for a TODO placeholder",
+    rows.push_back(FieldRow("handler", StringField(ed, "name, or empty for a TODO placeholder",
                                                    doc::EventText(node, key),
                                                    [edit, key](std::string next) {
                                                      edit([&key, &next](doc::Node& target) {
@@ -135,7 +135,7 @@ void ApplyValue(const Editor& ed, const std::string& id, const std::string& key,
 [[nodiscard]] View PageEditor(const Editor& ed) {
   return Column{
       Text("Document", TextRole::Title),
-      FieldRow("name", StringField("C++ identifier", ed.Document().name, [ed](std::string next) {
+      FieldRow("name", StringField(ed, "C++ identifier", ed.Document().name, [ed](std::string next) {
                  doc::Document updated = ed.Document();
                  updated.name = std::move(next);
                  ed.Apply(std::move(updated));
@@ -193,17 +193,7 @@ void ApplyValue(const Editor& ed, const std::string& id, const std::string& key,
           ed.Apply(std::move(next));
         }
       }),
-      icons::Action(icons::Delete(), "Delete node").OnClick([ed, id] {
-        doc::Document next = ed.Document();
-        const doc::OperationResult result = doc::RemoveNode(next, id);
-        if (result.ok) {
-          ed.Apply(std::move(next));
-          ed.Select(std::string());
-          ed.SetStatus("deleted " + id);
-        } else {
-          ed.SetStatus(result.error);
-        }
-      }),
+      icons::Action(icons::Delete(), "Delete node").OnClick([ed] { ed.DeleteSelected(); }),
   }
       .With(Spacing(8.0F))
       .Key("inspector-actions");
