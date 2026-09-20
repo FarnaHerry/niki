@@ -140,11 +140,11 @@ View Designer() {
                   .With(Grow(1.0F)),
               Island("Inspector", "right · 320", hui::ui::InspectorView(ed), palette)
                   .With(Frame{.width = 320.0F}),
-          }.With(Spacing(10.0F), Grow(1.0F), CrossAlign(CrossAxisAlignment::Stretch)),
+          }.With(Spacing(6.0F), Grow(1.0F), CrossAlign(CrossAxisAlignment::Stretch)),
           Island("Code", "module · json", hui::ui::CodeView(ed), palette, /*scroll=*/false)
               .With(Frame{.height = 200.0F}),
-      }.With(Spacing(10.0F), Grow(1.0F),
-             Padding(EdgeInsets{.top = 10.0F, .right = 10.0F, .bottom = 10.0F, .left = 10.0F})),
+      }.With(Spacing(6.0F), Grow(1.0F),
+             Padding(EdgeInsets{.top = 6.0F, .right = 6.0F, .bottom = 6.0F, .left = 6.0F})),
 
       // Status line.
       Row{
