@@ -22,7 +22,10 @@ using namespace huxerui;
 namespace hui::ui {
 namespace {
 
-[[nodiscard]] View BuildNode(const Editor& ed, const doc::Node& node);
+/// One node as the component it stands for. `editor_chrome` adds what only the
+/// designer needs — selection, drag, drop — and is off when the node is being
+/// built as a drag preview, where it must look like the finished component.
+[[nodiscard]] View BuildNode(const Editor& ed, const doc::Node& node, bool editor_chrome);
 
 /// Parses "#RRGGBB" / "#RRGGBBAA". The engine already validated the value, so a
 /// malformed one here means the catalog and the document disagree: magenta makes
@@ -49,22 +52,23 @@ namespace {
       .With(Background(ed.palette.accent_soft), CornerRadius(6.0F), Padding(16.0F));
 }
 
-[[nodiscard]] std::vector<View> BuildChildren(const Editor& ed, const std::vector<doc::Node>& children) {
+[[nodiscard]] std::vector<View> BuildChildren(const Editor& ed, const std::vector<doc::Node>& children,
+                                              bool editor_chrome) {
   std::vector<View> views;
   views.reserve(children.size());
   for (const auto& child : children) {
-    views.push_back(BuildNode(ed, child));
+    views.push_back(BuildNode(ed, child, editor_chrome));
   }
   return views;
 }
 
 /// One node's component, configured from its props but before user modifiers
 /// and before the editor's own selection and drop chrome is attached.
-[[nodiscard]] View BuildComponent(const Editor& ed, const doc::Node& node) {
+[[nodiscard]] View BuildComponent(const Editor& ed, const doc::Node& node, bool editor_chrome) {
   const std::string& type = node.type;
 
   if (type == "Column" || type == "Row" || type == "Flow" || type == "Stack") {
-    std::vector<View> views = BuildChildren(ed, node.children);
+    std::vector<View> views = BuildChildren(ed, node.children, editor_chrome);
     if (views.empty()) {
       views.push_back(EmptyContainer(ed, node));
     }
@@ -156,7 +160,8 @@ namespace {
     return field;
   }
   if (type == "ScrollView") {
-    View content = node.children.empty() ? EmptyContainer(ed, node) : BuildNode(ed, node.children.front());
+    View content = node.children.empty() ? EmptyContainer(ed, node)
+                                         : BuildNode(ed, node.children.front(), editor_chrome);
     ScrollView view(std::move(content));
     if (doc::EnumOf(node, "axis") == "Horizontal") {
       view = std::move(view).ScrollAxis(Axis::Horizontal);
@@ -164,7 +169,8 @@ namespace {
     return std::move(view).With(Frame{.height = 240.0F});
   }
   if (type == "MaterialTheme" || type == "MaterialDarkTheme" || type == "FlatTheme" || type == "FlatDarkTheme") {
-    View content = node.children.empty() ? EmptyContainer(ed, node) : BuildNode(ed, node.children.front());
+    View content = node.children.empty() ? EmptyContainer(ed, node)
+                                         : BuildNode(ed, node.children.front(), editor_chrome);
     if (type == "MaterialTheme") {
       return MaterialTheme(std::move(content));
     }
@@ -268,27 +274,32 @@ namespace {
   return view;
 }
 
-[[nodiscard]] View BuildNode(const Editor& ed, const doc::Node& node) {
+[[nodiscard]] View BuildNode(const Editor& ed, const doc::Node& node, bool editor_chrome) {
+  const std::string id = node.id;
+  View view =
+      ApplyContainerProps(ApplyModifiers(BuildComponent(ed, node, editor_chrome), node), node);
+  if (!editor_chrome) {
+    return std::move(view).Key(id);
+  }
+
   const catalog::ComponentDef* def = catalog::Find(node.type);
   const bool container = def != nullptr && def->children != catalog::ChildrenPolicy::None;
-
-  View view = ApplyContainerProps(ApplyModifiers(BuildComponent(ed, node), node), node);
 
   // Relocation drag: the pointer starts moving the node as soon as it passes the
   // slop threshold, so there is no press to hold first. A press that never moves
   // stays a click and only selects.
-  const std::string summary = doc::SummaryOf(node);
-  const std::string glyph = def != nullptr ? def->glyph : "?";
-  view = std::move(view).With(DragSource(
-      DropPayload{.move = true, .ref = node.id},
-      [type = node.type, glyph, card_bg = ed.palette.card_bg, accent = ed.palette.accent, summary] {
-        return Row{
-            Text(glyph + " " + type, TextRole::Label),
-            Text(summary, TextRole::Label).With(Opacity(0.6F)),
-        }
-            .With(Spacing(8.0F), Padding(8.0F), CornerRadius(6.0F), Background(card_bg),
-                  Border{.color = accent, .width = 1.0F});
-      }));
+  //
+  // The preview is the node itself, rebuilt without editor chrome: moving a card
+  // that is already on the canvas shows that card, not a stand-in for it. The
+  // node is looked up by id when the preview is built, so nothing is copied on
+  // every canvas render and the preview tracks the live document.
+  view = std::move(view).With(DragSource(DropPayload{.move = true, .ref = id}, [ed, id]() -> View {
+    const doc::Node* live = doc::FindNode(ed.Document(), id);
+    if (live == nullptr) {
+      return Text(id, TextRole::Label);
+    }
+    return BuildNode(ed, *live, /*editor_chrome=*/false);
+  }));
 
   // A container accepts a card from the palette (create) and a node already on
   // the canvas (relocate) through the same payload type.
@@ -321,19 +332,18 @@ namespace {
                                                : std::format("added {} as {} under {}", payload.ref, new_id,
                                                              parent_id));
                    });
-    if (ed.Hint() == node.id) {
+    if (ed.Hint() == id) {
       view = std::move(view).With(Background(ed.palette.accent_soft));
     }
   }
 
   // Selection chrome last, so it is not covered by a container's drop tint.
-  const std::string id = node.id;
   view = std::move(view).OnClick([ed, id] { ed.Select(id); });
-  if (ed.Selection() == node.id) {
+  if (ed.Selection() == id) {
     view = std::move(view).With(Border{.color = ed.palette.accent, .width = 2.0F}, CornerRadius(4.0F));
   }
 
-  return std::move(view).Key(node.id);
+  return std::move(view).Key(id);
 }
 
 }  // namespace
@@ -343,7 +353,7 @@ View CanvasView(const Editor& ed) {
   const std::string selected = ed.Selection();
   const doc::Node* selected_node = selected.empty() ? nullptr : doc::FindNode(document, selected);
 
-  View device = BuildNode(ed, document.root);
+  View device = BuildNode(ed, document.root, /*editor_chrome=*/true);
   device = std::move(device).With(Frame{.width = 460.0F, .min_height = 640.0F}, Background(ed.palette.device_bg),
                                   Border{.color = ed.palette.card_border, .width = 1.0F}, CornerRadius(12.0F));
 
