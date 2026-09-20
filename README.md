@@ -33,6 +33,22 @@ cmake --build build --parallel 8
 （`premature end of file; recovering`，会让 ninja **每次重新编译全部目标**）时删掉
 `.ninja_log` / `.ninja_deps` 重建一次——这两个文件只是缓存，删掉安全。
 
+### 三平台 CI
+
+`.github/workflows/build.yml` 在 Linux / macOS / Windows 上分别编译并跑 CLI 测试
+（`selftest`、`validate examples/*.hui.json`、`catalog --json`）。工具链照搬姊妹项目
+apitab / llm-switch 跑通的配方：Linux 是 `ubuntu:26.04` + clang-21/libc++-21，
+macOS 是 brew llvm + 现场生成的 `libc++.modules.json`，Windows 是 MSVC。
+本机开发用系统 GCC，所以 CI 顺带覆盖了另一套标准库实现。
+
+CI 里 `third_party/huxerui` 是自己 clone 的（仓库里那是个 gitignore 的符号链接），钉在
+`FarnaHerry/HuxerUI` 的一个 commit 上，然后套用 `cmake/patches/` 下的补丁：
+
+| 补丁 | 为什么 |
+|---|---|
+| `huxerui-caption-controls.patch` | 本仓库用的 `WindowCaptionControls` 还没上游；这是待提 PR 的那份改动 |
+| `huxerui-window-p0960.patch` | clang 的 ObjC++ 模式不实现 P0960，标题栏里的 `CrossAlign(...)` 函数式转型会让每个 AppKit 翻译单元编译失败 |
+
 CLI / MCP 用法（二进制就是 `build/hui`）：
 
 ```bash
@@ -204,7 +220,11 @@ export View CounterPage() {
 ```
 CMakeLists.txt       顶层构建（huxerui_add_app + 引擎的 CXX_MODULES file set）
 run.sh               构建并运行 build/hui
+.github/workflows/  三平台 CI
+cmake/patches/       CI 套在钉定 HuxerUI commit 上的本地补丁
 platform/linux/      平台入口（无参数=GUI，有子命令=CLI）与打包资源
+platform/macos/      平台入口（.app bundle 由 huxerui_add_app 生成）
+platform/windows/    平台入口 + manifest + 版本资源
 src/core/            纯逻辑（C++23 模块，只 import std）：
   json.cppm            内建 JSON（有序对象、解析/紧凑/美化输出）
   catalog.cppm         组件目录（面板/检查器/校验/代码生成/MCP 共用的唯一事实源）
