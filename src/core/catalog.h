@@ -5,12 +5,12 @@
 // against it, the code generator emits from it, and the MCP server publishes
 // it — so AI agents and humans read the same contract.
 
-export module hui.core.catalog;
+#pragma once
 
-import std;
-import hui.core.json;
+#include "core/std.h"
+#include "core/json.h"
 
-export namespace hui::catalog {
+namespace hui::catalog {
 
 enum class PropKind {
   Text,      // UTF-8 string

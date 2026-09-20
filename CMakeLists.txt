@@ -53,18 +53,6 @@ if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
     endif ()
 endif ()
 
-# The headless engine. Module interface units are listed explicitly, not globbed.
-set(HUI_MODULE_UNITS
-        src/core/json.cppm
-        src/core/catalog.cppm
-        src/core/doc.cppm
-        src/core/docio.cppm
-        src/core/validate.cppm
-        src/core/codegen.cppm
-        src/cli.cppm
-        src/mcp.cppm
-)
-
 huxerui_add_app(hui
         SOURCES
             ${APP_SOURCE_FILES}
@@ -81,12 +69,9 @@ huxerui_add_app(hui
 
 huxerui_configure_project_app(hui)
 
+# The engine is plain headers under src/; src/ is on the include path for both
+# the app sources and the platform entry.
 if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
-    target_sources(hui PRIVATE FILE_SET hui_modules TYPE CXX_MODULES
-            BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}"
-            FILES ${HUI_MODULE_UNITS})
     target_include_directories(hui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    set_target_properties(hui PROPERTIES CXX_MODULE_STD ON)
-    set_target_properties(hui PROPERTIES CXX_SCAN_FOR_MODULES ON)
     target_compile_features(hui PRIVATE cxx_std_23)
 endif ()
