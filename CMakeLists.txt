@@ -97,4 +97,15 @@ if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
     # source-checkout configuration that default is not applied for us.
     set_target_properties(hui PROPERTIES CXX_SCAN_FOR_MODULES ON)
     target_compile_features(hui PRIVATE cxx_std_23)
+
+    # MSVC reads a source file in the system codepage unless told otherwise, and
+    # the UI draws glyphs outside ASCII (the lightning mark on a bound event, the
+    # dirty dot on a tab). windows.h's min/max macros would also break every
+    # std::max in a translation unit that reaches it through a framework header.
+    if (WIN32)
+        target_compile_definitions(hui PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    endif ()
+    if (MSVC)
+        target_compile_options(hui PRIVATE /utf-8)
+    endif ()
 endif ()
