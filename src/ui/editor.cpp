@@ -1,11 +1,11 @@
 #include "ui/ui.h"
 
-#include "core/codegen.h"
-#include "core/docio.h"
-
 #include <filesystem>
 #include <optional>
 #include <utility>
+
+import hui.core.codegen;
+import hui.core.docio;
 
 namespace hui::ui {
 

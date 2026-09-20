@@ -4,14 +4,14 @@
 // Errors mean the document cannot faithfully become HuxerUI C++; warnings mean
 // it can, but the result will be surprising or degraded.
 
-#pragma once
+export module hui.core.validate;
 
-#include "core/std.h"
-#include "core/catalog.h"
-#include "core/doc.h"
-#include "core/json.h"
+import std;
+import hui.core.catalog;
+import hui.core.doc;
+import hui.core.json;
 
-namespace hui::validate {
+export namespace hui::validate {
 
 struct Issue final {
   std::string severity;  // "error" | "warning"

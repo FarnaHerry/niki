@@ -11,14 +11,14 @@
 // Two output styles: a complete module unit, or a bare return snippet to paste
 // into an existing composable.
 
-#pragma once
+export module hui.core.codegen;
 
-#include "core/std.h"
-#include "core/catalog.h"
-#include "core/doc.h"
-#include "core/json.h"
+import std;
+import hui.core.catalog;
+import hui.core.doc;
+import hui.core.json;
 
-namespace hui::codegen {
+export namespace hui::codegen {
 
 enum class Style {
   Module,

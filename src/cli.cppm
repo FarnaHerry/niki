@@ -9,18 +9,18 @@
 //
 // No arguments never reaches here: main() runs the designer GUI instead.
 
-#pragma once
+export module hui.cli;
 
-#include "core/std.h"
-#include "core/catalog.h"
-#include "core/codegen.h"
-#include "core/doc.h"
-#include "core/docio.h"
-#include "core/json.h"
-#include "core/validate.h"
-#include "mcp.h"
+import std;
+import hui.core.catalog;
+import hui.core.codegen;
+import hui.core.doc;
+import hui.core.docio;
+import hui.core.json;
+import hui.core.validate;
+import hui.mcp;
 
-namespace hui::cli {
+export namespace hui::cli {
 
 namespace detail {
 
@@ -419,7 +419,7 @@ int RunCatalog(const std::vector<std::string>& args) {
 }  // namespace detail
 
 /// Dispatches one CLI invocation; returns the process exit code.
-inline int Run(int argc, char** argv) {
+int Run(int argc, char** argv) {
   const std::vector<std::string> args(argv + 1, argv + argc);
   if (args.empty()) {
     detail::PrintUsage(std::cerr);

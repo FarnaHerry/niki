@@ -1,7 +1,5 @@
 #include "ui/ui.h"
 
-#include "core/catalog.h"
-
 #include <format>
 #include <string>
 #include <utility>

@@ -5,11 +5,11 @@
 // and the MCP stdio framing are the only users, and both want insertion-ordered
 // objects so generated files stay reviewable in a text editor.
 
-#pragma once
+export module hui.core.json;
 
-#include "core/std.h"
+import std;
 
-namespace hui::json {
+export namespace hui::json {
 
 enum class Type {
   Null,

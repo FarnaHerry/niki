@@ -4,14 +4,14 @@
 // AI agents editing it by hand: insertion-ordered, minimal (absent props mean
 // catalog defaults), and pretty-printed so diffs stay readable.
 
-#pragma once
+export module hui.core.docio;
 
-#include "core/std.h"
-#include "core/catalog.h"
-#include "core/doc.h"
-#include "core/json.h"
+import std;
+import hui.core.catalog;
+import hui.core.doc;
+import hui.core.json;
 
-namespace hui::io {
+export namespace hui::io {
 
 [[nodiscard]] inline json::Value PropValueToJson(const doc::PropValue& value) {
   if (const auto* flag = std::get_if<bool>(&value)) return json::Value(*flag);

@@ -2,16 +2,19 @@
 //
 // One header for the whole front end, the way apitab keeps its UI: the shell
 // and every panel include this, and the implementations live beside it in
-// per-panel .cpp files. The engine is header-only too, so nothing here has to
-// cross a module boundary.
+// per-panel .cpp files. The engine behind it is a set of C++23 modules, so the
+// include block here comes first and the imports follow it — GCC builds every
+// translation unit that way.
 #pragma once
 
 #include <huxerui/huxerui.h>
 
-#include "core/doc.h"
 #include "ui/theme.h"
 
 #include <string>
+
+import hui.core.catalog;
+import hui.core.doc;
 
 namespace hui::ui {
 

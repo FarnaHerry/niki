@@ -7,7 +7,7 @@
 #
 # The UI layer is plain C++ with the <huxerui/huxerui.h> umbrella header, exactly
 # as the CMake path expects. The headless engine (JSON, document model, code
-# generation, CLI, MCP) stays C++23 modules and is added to the same target as a
+# generation, CLI, MCP) is C++23 modules and is added to the same target as a
 # CXX_MODULES file set, the way apitab adds its domain layer.
 #
 #   cmake -S . -B build -G Ninja
@@ -53,6 +53,19 @@ if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
     endif ()
 endif ()
 
+# The headless engine's module interfaces. The UI never sees them as files: it
+# imports them, and the platform entry imports hui.cli.
+set(HUI_MODULE_UNITS
+        src/core/json.cppm
+        src/core/catalog.cppm
+        src/core/doc.cppm
+        src/core/docio.cppm
+        src/core/validate.cppm
+        src/core/codegen.cppm
+        src/mcp.cppm
+        src/cli.cppm
+)
+
 huxerui_add_app(hui
         SOURCES
             ${APP_SOURCE_FILES}
@@ -69,9 +82,19 @@ huxerui_add_app(hui
 
 huxerui_configure_project_app(hui)
 
-# The engine is plain headers under src/; src/ is on the include path for both
-# the app sources and the platform entry.
+# src/ is on the include path for the UI headers ("ui/ui.h") and the platform
+# entry; hux.cli and the engine modules come in through the file set below.
 if (NOT HUXERUI_LIBRARY_GRAPH_ONLY)
     target_include_directories(hui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+    # Engine modules (`import std;` in every one of them).
+    target_sources(hui PRIVATE FILE_SET hui_modules TYPE CXX_MODULES
+            BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}"
+            FILES ${HUI_MODULE_UNITS})
+    set_target_properties(hui PROPERTIES CXX_MODULE_STD ON)
+    # Scan every source, not just the module units: platform/linux/main.cpp is an
+    # ordinary .cpp that imports hui.cli and needs the module flags too. In the
+    # source-checkout configuration that default is not applied for us.
+    set_target_properties(hui PROPERTIES CXX_SCAN_FOR_MODULES ON)
     target_compile_features(hui PRIVATE cxx_std_23)
 endif ()

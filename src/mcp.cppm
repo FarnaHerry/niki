@@ -7,17 +7,17 @@
 // what the MCP stdio transport specifies. stdout carries only protocol frames;
 // diagnostics go to stderr.
 
-#pragma once
+export module hui.mcp;
 
-#include "core/std.h"
-#include "core/catalog.h"
-#include "core/codegen.h"
-#include "core/doc.h"
-#include "core/docio.h"
-#include "core/json.h"
-#include "core/validate.h"
+import std;
+import hui.core.catalog;
+import hui.core.codegen;
+import hui.core.doc;
+import hui.core.docio;
+import hui.core.json;
+import hui.core.validate;
 
-namespace hui::mcp {
+export namespace hui::mcp {
 
 namespace detail {
 
@@ -536,7 +536,7 @@ void OutlineInto(std::string& out, const doc::Node& node, std::size_t depth) {
 }  // namespace detail
 
 /// Runs the MCP server over stdio until stdin closes. Returns the exit code.
-inline int Run() {
+int Run() {
   std::ios::sync_with_stdio(false);
   std::string line;
   while (std::getline(std::cin, line)) {

@@ -6,7 +6,7 @@
 
 #include <huxerui/app.h>
 
-#include "cli.h"
+import hui.cli;
 
 int main(int argc, char** argv) {
   if (argc > 1) {

@@ -5,13 +5,13 @@
 // callers can keep one Document in a State and assign the result; nothing here
 // touches the filesystem or the UI.
 
-#pragma once
+export module hui.core.doc;
 
-#include "core/std.h"
-#include "core/catalog.h"
-#include "core/json.h"
+import std;
+import hui.core.catalog;
+import hui.core.json;
 
-namespace hui::doc {
+export namespace hui::doc {
 
 using PropValue = std::variant<std::monostate, bool, double, std::string, std::vector<std::string>>;
 // monostate means "not set": the catalog default applies for props that have
