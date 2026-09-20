@@ -26,17 +26,16 @@ Windows 的 custom chrome 由系统画按钮，需要时再同步。
 
 ## 待开发
 
-岛屿逐个补齐，顺序：检查器 → 代码面板。
+四个岛屿都已接上真实面板，接下来是细化。
 
-- **检查器岛（右侧 320）**：属性（枚举下拉、布尔开关、数值、选项列表）、修饰符
-  （padding/width/height/grow/圆角/前景背景边框/字号/enabled）与事件（开关绑定 + 填 handler 名），
-  外加问题列表。归档实现在 `old/ui-modules/inspector.cppm` + `widgets.cppm`，
-  受控字段控件按 `src/ui/*.h/.cpp` 的约定重写。
-- **代码岛（底部 200）**：C++ / JSON 双页签 + Copy，直接调 `hui.core.codegen` 与
-  `hui.core.docio`。归档实现在 `old/ui-modules/codepanel.cppm`。
+- **检查器**：颜色用取色器而不是手写 `#RRGGBB`；枚举用下拉以外更省空间的形式；字段的本地缓冲目前靠
+  `.Key(node#field)` 跟随选中切换，页面切换时要再确认一次（同一个 key 在不同页面里可能撞上）；
+  属性行的 label 宽度固定 92px，长 key 会挤。
+- **代码岛**：语法高亮、行号、导出前预览哪些 handler 需要自己实现（`codegen` 已经产出清单，
+  只是没显示）；页签切换目前每次重算 `GenerateCpp`，文档大以后要加缓存。
 - **画布细化**：拖到容器**内部某个位置**插入（目前只追加到末尾）、拖动时的落点插入线、
-  多选与键盘删除；拉伸把手目前只改 `width`/`height`，还没有等比（Shift）、从中心拉、
-  或者按相邻元素对齐吸附；面板改成「按下即拖」后要盯一下两处 ScrollView（组件岛、画布）还能不能拖动滚动。
+  多选与键盘删除；拉伸把手只改 `width`/`height`，还没有等比（Shift）、从中心拉、按相邻元素对齐吸附；
+  面板「按下即拖」后要盯一下两处 ScrollView（组件岛、画布）还能不能拖动滚动。
 - **标签页细化**：拖动重排（`StateList::Move` 已经就位）、双击重命名（`RenameActive` 已经就位，
   改名后要连带决定是否重命名文件）、`Save As` 走 `FilePicker::SaveFileAsync`、
   关闭未保存页面时确认、把整组页面存成一个工程文件。

@@ -43,11 +43,6 @@ namespace {
             CornerRadius(12.0F));
 }
 
-[[nodiscard]] View RegionPlaceholder(std::string text) {
-  return Text(std::move(text), TextRole::Label).With(Opacity(0.4F), Padding(4.0F));
-}
-
-
 [[huxerui::composable]]
 View Designer() {
   auto dark = UseState(false);
@@ -143,10 +138,10 @@ View Designer() {
                   .With(Frame{.width = 260.0F}),
               Island("Canvas", "centre · grow", hui::ui::CanvasView(ed), palette, /*scroll=*/false)
                   .With(Grow(1.0F)),
-              Island("Inspector", "right · 320", RegionPlaceholder("inspector region"), palette)
+              Island("Inspector", "right · 320", hui::ui::InspectorView(ed), palette)
                   .With(Frame{.width = 320.0F}),
           }.With(Spacing(10.0F), Grow(1.0F), CrossAlign(CrossAxisAlignment::Stretch)),
-          Island("Code", "module · json", RegionPlaceholder("generated code region"), palette)
+          Island("Code", "module · json", hui::ui::CodeView(ed), palette, /*scroll=*/false)
               .With(Frame{.height = 200.0F}),
       }.With(Spacing(10.0F), Grow(1.0F),
              Padding(EdgeInsets{.top = 10.0F, .right = 10.0F, .bottom = 10.0F, .left = 10.0F})),

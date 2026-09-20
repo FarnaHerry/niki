@@ -143,7 +143,16 @@ struct Editor final {
 [[nodiscard]] huxerui::View StructureView(const Editor& ed);
 
 /// Canvas island: the document rendered with the real components it stands
-/// for, with click-to-select, drag-to-relocate, and container drop targets.
+/// for, with click-to-select, drag-to-relocate, resize handles, and container
+/// drop targets.
 [[nodiscard]] huxerui::View CanvasView(const Editor& ed);
+
+/// Inspector island: the selected node's properties, modifiers, and events —
+/// or the document itself when nothing is selected — over the live issue list.
+[[nodiscard]] huxerui::View InspectorView(const Editor& ed);
+
+/// Code island: the C++ the document generates and its own JSON behind two
+/// tabs. A composable: it owns which tab is showing.
+[[nodiscard]] huxerui::View CodeView(const Editor& ed);
 
 }  // namespace hui::ui
