@@ -16,15 +16,19 @@ hui 是一个仿照 Qt Designer 的可视化布局工具：把 HuxerUI 组件拖
 
 ## 构建与运行
 
-项目是标准 mcpp 应用（`mcpp.toml` + `build.mcpp`，`import huxerui;`，无任何 `#include`），
-依赖相邻路径下的 HuxerUI 源码（`../HuxerUI`）：
+标准的 HuxerUI CMake 工程（与 apitab、llm-switch 同形）。依赖相邻路径下的 HuxerUI
+源码（`third_party/huxerui` → `../../HuxerUI`），也可用 `-DHUXERUI_HOME=<路径>`
+指向别处的源码或已安装 SDK：
 
 ```bash
-mcpp build      # 首次会连 HuxerUI 一起从源码构建
-mcpp run        # 构建并打开设计器
+cmake -S . -B build -G Ninja
+cmake --build build --parallel 8
+
+./run.sh        # 构建并打开设计器
+./build/hui     # 已构建时直接运行
 ```
 
-CLI / MCP 用法（二进制在 `target/<host>/<hash>/bin/hui`）：
+CLI / MCP 用法（二进制就是 `build/hui`）：
 
 ```bash
 hui                 # 无参数 = 打开设计器 GUI
@@ -35,9 +39,13 @@ hui codegen examples/counter.hui.json                 # 完整模块单元 → s
 hui codegen examples/counter.hui.json --style snippet # return 语句片段
 hui catalog            # 人读的组件目录
 hui catalog --json     # 机器读的完整 schema
-hui selftest           # 核心逻辑自检（51 项）
+hui selftest           # 核心逻辑自检
 hui mcp                # stdio MCP 服务器
 ```
+
+构建分层：`src/core/` 与 `src/cli.cppm` / `src/mcp.cppm` 是 C++23 模块（`import std;`），
+`src/ui/` 与 `src/app.cpp` 是普通的 `#include <huxerui/huxerui.h>` 源文件（`hcg` 负责
+`[[huxerui::composable]]` 变换）。每个翻译单元都把 `#include` 写在 `import` 之前。
 
 ## 设计器（GUI）
 
@@ -165,10 +173,10 @@ export View CounterPage() {
 ## 工程结构
 
 ```
-mcpp.toml            包清单（依赖 ../HuxerUI，huxerui.rules 负责源码收集与 hcg 变换）
-build.mcpp           构建程序（一行 configure）
-src/main.cpp         入口：无参数=GUI，有子命令=CLI
-src/core/            纯逻辑（只 import std）：
+CMakeLists.txt       顶层构建（huxerui_add_app + 引擎的 CXX_MODULES file set）
+run.sh               构建并运行 build/hui
+platform/linux/      平台入口（无参数=GUI，有子命令=CLI）与打包资源
+src/core/            纯逻辑（C++23 模块，只 import std）：
   json.cppm            内建 JSON（有序对象、解析/紧凑/美化输出）
   catalog.cppm         组件目录（面板/检查器/校验/代码生成/MCP 共用的唯一事实源）
   doc.cppm             文档模型 + 纯操作（增删移改、历史/撤销重做）
@@ -177,16 +185,18 @@ src/core/            纯逻辑（只 import std）：
   codegen.cppm         文档 → HuxerUI DSL C++（含事件绑定与 handler 清单）
 src/cli.cppm         CLI 子命令 + selftest
 src/mcp.cppm         MCP 服务器（stdio JSON-RPC）
-src/ui/              设计器界面（import huxerui）：
-  widgets.cppm         拖拽 payload + 受控属性编辑器
-  canvas.cppm          画布：文档实时渲染、选择、拖放
-  palette.cppm         组件面板
-  structure.cppm       结构树（⚡ 标记已绑定事件的节点）
-  inspector.cppm       属性/修饰符/事件检查器 + 问题列表
-  codepanel.cppm       C++ / JSON 预览 + 复制
-src/app.cppm         应用壳（工具栏、布局、Application 注册）
-resources/strings/   打包字符串资源
+src/ui/              设计器界面（普通头文件 + .cpp，import 引擎模块）：
+  ui.h                 前端全部声明：共享 Editor 状态、拖拽 payload、各面板入口
+  theme.h              设计器自身的深浅色调色板
+  icons.h/.cpp         24×24 矢量图标（随主题着色，不需要两套资源）
+  editor.cpp           文档/选择/状态/历史的唯一提交点，打开/保存/导出
+  canvas.cpp           画布：文档实时渲染、选择、拖放
+  palette.cpp          组件面板（单击追加，拖拽投放）
+  structure.cpp        结构树
+src/app.cpp          应用壳（标题栏、工具栏、岛屿布局、Application 注册）
+resources/           打包资源
 examples/            示例文档（counter / login / profile_card，均含事件绑定）
+old/                 mcpp 时代的归档（模块化 UI、build.mcpp、画布早期步骤）
 ```
 
 核心与界面严格分离：`src/core` 不依赖 HuxerUI，CLI 与 MCP 完全无头运行。
@@ -202,34 +212,13 @@ v0.2 目录覆盖 HuxerUI 的布局、内容、输入与主题组件（21 个）
 （VirtualList/Grid）、导航壳（TopAppBar/NavigationPane）、图片资源、
 多页面工程（一个工程多份文档）、以及 C++ → 文档的反向解析。
 
-## 已知问题与临时绕过
+## 上游待办
 
-### 框架资源没有部署到可执行文件旁（HuxerUI#145）
-
-`huxerui-build-rules` 会编译并合并资源包（`out/hrc/final/package/huxerui/resources.bin`），
-但**没有任何一步把它放到可执行文件旁边**；而运行时 `ResourceRoot()` 找的正是
-`<可执行文件>.resources/huxerui/resources.bin`。于是 mcpp 构建下的**任何**框架资源查找都会抛：
-
-```
-std::logic_error: HuxerUI resource is missing from the installed package: huxerui:strings/window_minimize
-```
-
-受影响的不只是自定义标题栏的窗口按钮文案，还包括框架图片（`images/tree_disclosure`、
-`chevron_right`、`check`、`dropdown_indicator`）和 `DatePicker` / `TimePicker` 的本地化串。
-CMake 路径有 staging（`cmake/HuxerUIResources.cmake`），mcpp 路径没有。
-
-已上报上游：<https://github.com/HuxerUI/HuxerUI/issues/145>
-
-**临时绕过**：`build.mcpp` 里提交了一个 `hui:stage-resources` 动作，用 `hrc merge` 重新生成
-合并包并按运行时要求的布局落到 `bin/hui.resources/`（`hrc --output X` 恒为 `X/package/…`，
-所以脚本里补了一次搬运）。上游修好后，删掉 `build.mcpp` 中标注 `Workaround for HuxerUI#145`
-的那整段即可。
-
-### mcpp 的增量缓存会漏掉依赖源码的改动
-
-改动 **HuxerUI 的 `.cpp` 源码**（或 `build.mcpp` 的结构）后，`mcpp build` 可能报告
-`Finished in 0.05s` 而复用旧产物，甚至新的构建动作没有进入 `build.ninja`。
-遇到行为与源码不一致时，先 `rm -rf target` 再构建。
+**自定义标题栏需要框架配合**。`WindowChromeMode::Custom` 下框架仍然绘制最小化/最大化/关闭，
+并会在 Linux 上为它们预留一段右侧内缩。本仓库给 `WindowOptions` 加了 `caption_controls`：
+应用声明 `WindowCaptionControls::Application` 时框架不再绘制、也不再预留。改动目前以本地补丁
+的形式留在 HuxerUI 检出里（`third_party/huxerui` 指向 `../../HuxerUI`，6 个文件），
+提 PR 被接受后即可删除。
 
 ## 许可
 

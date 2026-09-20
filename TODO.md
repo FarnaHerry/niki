@@ -4,7 +4,7 @@
 
 ### 1. PR：`WindowCaptionControls`（框架 API 增补）
 
-**状态**：本地 HuxerUI 已改好（6 文件，+30 行），等有空提 PR。
+**状态**：本地 HuxerUI 检出已改好（6 文件，+30 行），等有空提 PR。
 
 **动机**：`WindowChromeMode::Custom` 下框架**无条件**画一组 min/max/close，且 Linux 适配器恒定
 预留右侧 138px（`3 × kLinuxCaptionButtonWidth`），应用层无法关闭、也无法覆盖（该节点是
@@ -24,22 +24,17 @@ RuntimeRoot 的最后一个子节点，画在应用内容之上）。
 **待补**：`platform/windows/win32_adapter.cpp` 的 `QueryTitleBarMetrics()` 仍按系统按钮预留；
 Windows 的 custom chrome 由系统画按钮，需要时再同步。
 
-### 2. 移除 `build.mcpp` 里的资源 staging 绕过
-
-**状态**：等 HuxerUI#145 修复。
-见 <https://github.com/HuxerUI/HuxerUI/issues/145>。
-修复后删掉 `build.mcpp` 中标注 `Workaround for HuxerUI#145` 的整段。
-
-### 3. mcpp 增量缓存漏掉依赖源码改动
-
-改 HuxerUI 的 `.cpp` 或 `build.mcpp` 结构后，`mcpp build` 可能报 `Finished in 0.05s` 复用旧产物，
-新的构建动作甚至不会进入 `build.ninja`。遇到行为与源码不一致时先 `rm -rf target`。
-这是 mcpp 侧的问题，可另开 issue。
-
 ## 待开发
 
-- **画布（第 3 步，暂停）**：完整 `BuildComponent` 会让整页空白。已缩小到「某个组件分支的编译」
-  （起始文档只有 Column+Text，运行时不会执行那些分支）。精简到只剩容器 + Text 时布局正常。
-  归档实现在 `old/ui/canvas-step3.cppm`。
-- **交互**：拖放（palette → 容器、节点移动）、撤销/重做、打开/保存。
-- **README** 里列的后续：更多事件、列表虚拟化组件、导航壳、图片资源、多页面工程、C++ → 文档反向解析。
+岛屿逐个补齐，顺序：检查器 → 代码面板。
+
+- **检查器岛（右侧 320）**：属性（枚举下拉、布尔开关、数值、选项列表）、修饰符
+  （padding/width/height/grow/圆角/前景背景边框/字号/enabled）与事件（开关绑定 + 填 handler 名），
+  外加问题列表。归档实现在 `old/ui-modules/inspector.cppm` + `widgets.cppm`，
+  受控字段控件按 `src/ui/*.h/.cpp` 的约定重写。
+- **代码岛（底部 200）**：C++ / JSON 双页签 + Copy，直接调 `hui.core.codegen` 与
+  `hui.core.docio`。归档实现在 `old/ui-modules/codepanel.cppm`。
+- **画布细化**：拖到容器**内部某个位置**插入（目前只追加到末尾）、拖动时的落点插入线、
+  多选与键盘删除。
+- **README 里列的后续**：更多事件（指针/键盘/生命周期）、列表虚拟化组件、导航壳、图片资源、
+  多页面工程、C++ → 文档反向解析。
