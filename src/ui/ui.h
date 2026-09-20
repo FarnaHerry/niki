@@ -9,10 +9,12 @@
 
 #include <huxerui/huxerui.h>
 
+#include "ui/resize.h"
 #include "ui/theme.h"
 
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -48,6 +50,20 @@ struct Page final {
 /// A fresh page holding a starter document.
 [[nodiscard]] Page StarterPage(std::string title, std::string path);
 
+/// A resize gesture in progress: which node, the size it had when the gesture
+/// began, and the document to put back into history when it ends. The document
+/// is published live while the pointer moves, so the whole gesture costs one
+/// undo step rather than one per frame.
+struct ResizeGesture final {
+  std::string node;  // empty when nothing is being resized
+  float width = 0.0F;
+  float height = 0.0F;
+  doc::Document before;
+};
+
+/// Smallest a node may be resized to, in logical pixels.
+inline constexpr float kMinimumNodeSize = 8.0F;
+
 /// Shared designer state, threaded through every panel.
 ///
 /// The open pages live in one list and `active` picks among them. Panels read
@@ -58,6 +74,8 @@ struct Editor final {
   huxerui::State<std::size_t> active;
   huxerui::State<std::string> status;
   huxerui::State<std::string> drop_hint;  // container highlighted by a drag
+  huxerui::State<ResizeGesture> resize;
+  std::shared_ptr<NodeMetrics> metrics;  // where the canvas reports node sizes
   theme::Palette palette;
 
   [[nodiscard]] std::size_t ActiveIndex() const;
@@ -79,6 +97,17 @@ struct Editor final {
   /// Publishes a mutated document: the outgoing version is snapshotted into the
   /// active page's history first, so every panel action is undoable.
   void Apply(doc::Document next) const;
+
+  /// Starts resizing `id` from the size it currently has on screen. The size
+  /// comes from the canvas's measurement table, so a node with no explicit
+  /// width still resizes from where it actually is.
+  void BeginResize(std::string id) const;
+  /// Applies a resize delta to the node the gesture started on. Ignored when
+  /// `id` is not that node, so a stale handler cannot move someone else.
+  void ResizeBy(const std::string& id, float delta_width, float delta_height) const;
+  /// Ends the gesture and puts its starting document into history.
+  void EndResize() const;
+  [[nodiscard]] bool Resizing() const;
 
   /// Appends a page and activates it. An empty title falls back to the document
   /// name; an empty path means the page has never been saved.

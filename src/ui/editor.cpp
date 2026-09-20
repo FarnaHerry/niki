@@ -1,6 +1,7 @@
 #include "ui/ui.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -89,6 +90,50 @@ void Editor::Apply(doc::Document next) const {
     page.document = std::move(next);
     page.dirty = true;
   });
+}
+
+bool Editor::Resizing() const { return !resize.Get().node.empty(); }
+
+void Editor::BeginResize(std::string id) const {
+  const std::optional<huxerui::Size> measured = metrics ? metrics->Get(id) : std::nullopt;
+  Edit([&](Page& page) {
+    resize = ResizeGesture{
+        .node = std::move(id),
+        .width = measured ? measured->width : 0.0F,
+        .height = measured ? measured->height : 0.0F,
+        .before = page.document,
+    };
+  });
+}
+
+void Editor::ResizeBy(const std::string& id, float delta_width, float delta_height) const {
+  const ResizeGesture gesture = resize.Get();
+  if (gesture.node.empty() || gesture.node != id) {
+    return;
+  }
+  doc::Document next = Document();
+  if (delta_width != 0.0F) {
+    const float width = std::max(kMinimumNodeSize, gesture.width + delta_width);
+    static_cast<void>(doc::SetModifier(next, id, "width", static_cast<double>(std::lround(width))));
+  }
+  if (delta_height != 0.0F) {
+    const float height = std::max(kMinimumNodeSize, gesture.height + delta_height);
+    static_cast<void>(doc::SetModifier(next, id, "height", static_cast<double>(std::lround(height))));
+  }
+  Edit([&next](Page& page) {
+    page.document = std::move(next);
+    page.dirty = true;
+  });
+}
+
+void Editor::EndResize() const {
+  const ResizeGesture gesture = resize.Get();
+  if (gesture.node.empty()) {
+    return;
+  }
+  resize = ResizeGesture{};
+  Edit([&gesture](Page& page) { doc::Commit(page.history, gesture.before); });
+  status = "resized " + gesture.node;
 }
 
 void Editor::AddPage(std::string title, std::string path, doc::Document document) const {

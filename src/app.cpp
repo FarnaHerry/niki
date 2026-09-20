@@ -8,6 +8,7 @@
 #include <huxerui/huxerui.h>
 
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -56,6 +57,10 @@ View Designer() {
   auto active = UseState(std::size_t{0});
   auto status = UseState(std::string("welcome — click a component in the palette"));
   auto drop_hint = UseState(std::string(""));
+  auto resize = UseState(hui::ui::ResizeGesture{});
+  // Held in a State so the table survives recomposition: the canvas writes the
+  // measured size of every node into it, and a resize gesture reads it back.
+  auto metrics = UseState(std::make_shared<hui::ui::NodeMetrics>());
 
   const hui::theme::Palette palette = dark.Get() ? hui::theme::DarkPalette() : hui::theme::LightPalette();
   const hui::ui::Editor ed{
@@ -63,6 +68,8 @@ View Designer() {
       .active = active,
       .status = status,
       .drop_hint = drop_hint,
+      .resize = resize,
+      .metrics = metrics.Get(),
       .palette = palette,
   };
   const WindowHandle window = UseWindow();

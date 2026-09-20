@@ -3,8 +3,9 @@
 // Every node becomes the actual View it will compile to, so what the designer
 // shows is what the generated code produces. A node selects on click — the
 // innermost binding wins, so the deepest node under the pointer is the one
-// selected — drags to relocate, and any node the catalog calls a container
-// accepts both a relocation and a card dragged out of the palette.
+// selected — drags to relocate, resizes from eight handles once selected, and
+// any node the catalog calls a container accepts both a relocation and a card
+// dragged out of the palette.
 
 #include "ui/ui.h"
 
@@ -21,6 +22,15 @@ using namespace huxerui;
 
 namespace hui::ui {
 namespace {
+
+/// What a resize handle carries while it is dragged. A payload type of its own,
+/// so no canvas drop target accepts it: dragging a handle resizes, and can never
+/// be read as dropping a node.
+struct ResizePayload final {
+  std::string node;
+  int horizontal = 0;
+  int vertical = 0;
+};
 
 /// One node as the component it stands for. `editor_chrome` adds what only the
 /// designer needs — selection, drag, drop — and is off when the node is being
@@ -274,6 +284,44 @@ namespace {
   return view;
 }
 
+/// One resize handle. Dragging it asks the editor for a new size; the editor
+/// refuses deltas from a node other than the one the gesture started on, so a
+/// handle left over from an earlier render can never resize the wrong node.
+[[nodiscard]] View ResizeHandle(const Editor& ed, const std::string& node, HandleSpot spot) {
+  return Spacer()
+      .With(Frame{.width = ResizeFrame::kHandleSize, .height = ResizeFrame::kHandleSize},
+            Background(ed.palette.accent),
+            Border{.color = ed.palette.panel_bg, .width = 1.5F}, CornerRadius(2.0F))
+      .With(DragSource(
+          ResizePayload{.node = node, .horizontal = spot.horizontal, .vertical = spot.vertical}))
+      .On<DragSourceEvents::Started>([ed, node](const DragEvent&) { ed.BeginResize(node); })
+      .On<DragSourceEvents::Changed>([ed, node, spot](const DragEvent& event) {
+        ed.ResizeBy(node, static_cast<float>(spot.horizontal) * event.translation.x,
+                    static_cast<float>(spot.vertical) * event.translation.y);
+      })
+      .On<DragSourceEvents::Ended>([ed](const DragDropResult&) { ed.EndResize(); })
+      .On<DragSourceEvents::Canceled>([ed](const DragEvent&) { ed.EndResize(); });
+}
+
+/// A selected node plus the eight handles that resize it. The node measures
+/// first and the handles are placed against its measured size, so no one
+/// outside the layout has to know where the node's edges ended up. Growth is
+/// repeated on the frame because the node's parent now sees the frame.
+[[nodiscard]] View WithResizeHandles(const Editor& ed, const doc::Node& node, View content) {
+  std::vector<View> children;
+  children.reserve(kHandleCount + 1);
+  children.push_back(std::move(content).With(SizeProbe{.id = node.id, .metrics = ed.metrics}));
+  for (const HandleSpot spot : kHandleSpots) {
+    children.push_back(ResizeHandle(ed, node.id, spot));
+  }
+
+  View frame = ResizeFrame(std::move(children));
+  if (doc::HasModifier(node, "grow")) {
+    frame = std::move(frame).With(Grow(static_cast<float>(doc::ModifierNumber(node, "grow", 1.0))));
+  }
+  return frame;
+}
+
 [[nodiscard]] View BuildNode(const Editor& ed, const doc::Node& node, bool editor_chrome) {
   const std::string id = node.id;
   View view =
@@ -339,11 +387,12 @@ namespace {
 
   // Selection chrome last, so it is not covered by a container's drop tint.
   view = std::move(view).OnClick([ed, id] { ed.Select(id); });
-  if (ed.Selection() == id) {
-    view = std::move(view).With(Border{.color = ed.palette.accent, .width = 2.0F}, CornerRadius(4.0F));
+  if (ed.Selection() != id) {
+    return std::move(view).Key(id);
   }
 
-  return std::move(view).Key(id);
+  view = std::move(view).With(Border{.color = ed.palette.accent, .width = 2.0F}, CornerRadius(4.0F));
+  return WithResizeHandles(ed, node, std::move(view)).Key(id);
 }
 
 }  // namespace
