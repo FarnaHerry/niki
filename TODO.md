@@ -35,7 +35,7 @@ Windows 的 custom chrome 由系统画按钮，需要时再同步。
 - **代码岛（底部 200）**：C++ / JSON 双页签 + Copy，直接调 `hui.core.codegen` 与
   `hui.core.docio`。归档实现在 `old/ui-modules/codepanel.cppm`。
 - **画布细化**：拖到容器**内部某个位置**插入（目前只追加到末尾）、拖动时的落点插入线、
-  多选与键盘删除。
+  多选与键盘删除；面板改成「按下即拖」后要盯一下两处 ScrollView（组件岛、画布）还能不能拖动滚动。
 - **标签页细化**：拖动重排（`StateList::Move` 已经就位）、双击重命名（`RenameActive` 已经就位，
   改名后要连带决定是否重命名文件）、`Save As` 走 `FilePicker::SaveFileAsync`、
   关闭未保存页面时确认、把整组页面存成一个工程文件。

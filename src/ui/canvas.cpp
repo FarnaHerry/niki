@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <charconv>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -275,8 +274,9 @@ namespace {
 
   View view = ApplyContainerProps(ApplyModifiers(BuildComponent(ed, node), node), node);
 
-  // Relocation drag: press briefly, then drag. The pause keeps an ordinary click
-  // — which selects — from being read as the start of a move.
+  // Relocation drag: the pointer starts moving the node as soon as it passes the
+  // slop threshold, so there is no press to hold first. A press that never moves
+  // stays a click and only selects.
   const std::string summary = doc::SummaryOf(node);
   const std::string glyph = def != nullptr ? def->glyph : "?";
   view = std::move(view).With(DragSource(
@@ -288,8 +288,7 @@ namespace {
         }
             .With(Spacing(8.0F), Padding(8.0F), CornerRadius(6.0F), Background(card_bg),
                   Border{.color = accent, .width = 1.0F});
-      },
-      DragGesture{.minimum_press_duration = std::chrono::milliseconds(120)}));
+      }));
 
   // A container accepts a card from the palette (create) and a node already on
   // the canvas (relocate) through the same payload type.
