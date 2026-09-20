@@ -28,6 +28,11 @@ cmake --build build --parallel 8
 ./build/hui     # 已构建时直接运行
 ```
 
+`run.sh` 在没事可做时约 0.1s 就交给可执行文件（真正的开销是它启动的 GUI，约 0.3s）。它只在
+`build/` 还没配置过时才跑 generator，用 `flock` 把构建步串行化，并且在发现 ninja 的构建日志损坏
+（`premature end of file; recovering`，会让 ninja **每次重新编译全部目标**）时删掉
+`.ninja_log` / `.ninja_deps` 重建一次——这两个文件只是缓存，删掉安全。
+
 CLI / MCP 用法（二进制就是 `build/hui`）：
 
 ```bash
