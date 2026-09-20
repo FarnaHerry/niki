@@ -1,0 +1,255 @@
+# build.yml — hui 多平台 CI：Linux / macOS / Windows 各自编译并跑 CLI 测试。
+#
+# 形态蓝本：姊妹项目 llm-switch 与 apitab 的 .github/workflows/build.yml，沿用
+# 它们跑通的「HuxerUI 源码 + C++23 modules + `import std`」工具链配方。按本仓库
+# 裁剪：没有第三方 vendor 依赖、没有安装器/打包，每个平台只做
+#
+#   clone HuxerUI（钉 commit）→ 套本地补丁 → cmake 配置 → 编译 → 跑 CLI 测试
+#
+# HuxerUI 来源（关键）：本仓库用到一处尚未上游的框架 API（WindowCaptionControls，
+# 见 TODO.md 里待提的 PR）。所以钉的是 fork FarnaHerry/HuxerUI 的 commit，再套
+# cmake/patches/ 下的补丁。仓库里的 third_party/huxerui 是 gitignore 的符号链接，
+# CI 必须自己 clone —— 顶层 CMakeLists 看到该目录存在就走 add_subdirectory，
+# 与本机开发形态一致。
+#
+# 为什么 Linux 用 clang-21/libc++-21 而不是 GCC：CMake 的 GNU `import std` 发现要
+# CMake ≥ 4.0 且依赖 GCC ≥ 15 的 libstdc++.modules.json，而 ubuntu:26.04 的
+# g++-16 是 trunk 快照；clang+libc++ 这条链在姊妹项目里已长期跑通。本机开发用
+# 系统 GCC，所以 CI 顺带覆盖了另一套标准库实现。
+#
+# 已知风险：ubuntu:26.04 是滚动预发布容器，clang-21/libc++-21 的包名与
+# libc++.modules.json 布局若随发布调整，需要同步改下面的步骤。
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 公开 fork，含本仓库依赖的 WindowCaptionControls 之前的 Linux 改动。
+  HUXERUI_REPO: 'https://github.com/FarnaHerry/HuxerUI.git'
+  # 固定 commit，保证可复现；升级时同步更新 cmake/patches/ 使其仍能干净套用。
+  HUXERUI_COMMIT: '688b880ba5cd950e982269db3f3cf37f9cd30713'
+
+jobs:
+  # ------------------------------------------------------------------ Linux
+  build-linux:
+    name: build-linux-x86_64
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:26.04
+    steps:
+      - name: Install container baseline
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Fetch HuxerUI and apply local patches
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none "$HUXERUI_REPO" third_party/huxerui
+          git -C third_party/huxerui checkout "$HUXERUI_COMMIT"
+          for patch in "$PWD"/cmake/patches/*.patch; do
+            echo "applying $(basename "$patch")"
+            git -C third_party/huxerui apply "$patch"
+          done
+
+      - name: Install dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            clang-21 libc++-21-dev ninja-build pkg-config \
+            python3 python3-pip \
+            libgtk-4-dev libepoxy-dev libsoup-3.0-dev
+          # 26.04 的 apt cmake 是 3.31（GNU import-std 发现不行），固定 4.4.2
+          python3 -m pip install --break-system-packages -q cmake==4.4.2
+          cmake --version | head -1
+          # Debian 打包的 libc++.modules.json 相对路径坏指 /lib/share/…，
+          # 按 /usr/lib/llvm-21 的真实布局改写为绝对路径
+          python3 -c "
+          import json
+          p = '/usr/lib/x86_64-linux-gnu/libc++.modules.json'
+          d = json.load(open(p))
+          for m in d['modules']:
+              m['source-path'] = '/usr/lib/llvm-21/share/libc++/v1/' + m['source-path'].split('/')[-1]
+              m['local-arguments']['system-include-directories'] = ['/usr/lib/llvm-21/share/libc++/v1']
+          json.dump(d, open(p, 'w'), indent=1)"
+
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21 \
+            -DCMAKE_CXX_FLAGS='-stdlib=libc++' \
+            -DCMAKE_EXE_LINKER_FLAGS='-stdlib=libc++' \
+            -DCMAKE_SHARED_LINKER_FLAGS='-stdlib=libc++'
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          ./build/hui selftest
+          ./build/hui validate examples/*.hui.json
+          ./build/hui catalog --json > /dev/null
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hui-linux-x86_64
+          path: build/hui
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ------------------------------------------------------------------ macOS
+  build-macos:
+    name: build-macos-arm64
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Fetch HuxerUI and apply local patches
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none "$HUXERUI_REPO" third_party/huxerui
+          git -C third_party/huxerui checkout "$HUXERUI_COMMIT"
+          for patch in "$PWD"/cmake/patches/*.patch; do
+            echo "applying $(basename "$patch")"
+            git -C third_party/huxerui apply "$patch"
+          done
+
+      - name: Install dependencies (brew llvm)
+        run: |
+          brew install llvm ninja
+          llvm_prefix="$(brew --prefix llvm)"
+          mod_dir="$llvm_prefix/share/libc++/v1"
+          # brew llvm 只装模块源、不带 libc++.modules.json（formula 未开
+          # LIBCXX_ENABLE_STD_MODULES），按上游 schema 生成一份放到 brew 的 lib/
+          for f in std.cppm std.compat.cppm; do
+            test -f "$mod_dir/$f" || { echo "missing $mod_dir/$f (brew llvm layout changed?)" >&2; exit 1; }
+          done
+          python3 - "$mod_dir" "$llvm_prefix/lib/libc++.modules.json" <<'PY'
+          import json, sys
+          mod_dir, out = sys.argv[1], sys.argv[2]
+          mod = lambda name: {"logical-name": name, "source-path": mod_dir + "/" + name + ".cppm", "is-std-library": True, "local-arguments": {"system-include-directories": [mod_dir]}}
+          json.dump({"version": 1, "revision": 1, "modules": [mod("std"), mod("std.compat")]}, open(out, "w"), indent=1)
+          PY
+          echo "LLVM_PREFIX=$llvm_prefix" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          # OBJCXX 必须显式指定 brew clang，否则 CMake 默认拿 xcrun 的
+          # AppleClang 混回两套 libc++；链接行按 brew llvm caveats 配方
+          # （libc++/libc++abi 在 lib/c++，libunwind 在 lib/unwind）。
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="$LLVM_PREFIX/bin/clang" \
+            -DCMAKE_CXX_COMPILER="$LLVM_PREFIX/bin/clang++" \
+            -DCMAKE_OBJCXX_COMPILER="$LLVM_PREFIX/bin/clang++" \
+            -DCMAKE_CXX_FLAGS='-stdlib=libc++ -D_LIBCPP_DISABLE_AVAILABILITY' \
+            -DCMAKE_OBJCXX_FLAGS='-stdlib=libc++ -D_LIBCPP_DISABLE_AVAILABILITY' \
+            -DCMAKE_EXE_LINKER_FLAGS="-stdlib=libc++ -L$LLVM_PREFIX/lib/c++ -L$LLVM_PREFIX/lib/unwind -lc++ -lc++abi -lunwind" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++ -L$LLVM_PREFIX/lib/c++ -L$LLVM_PREFIX/lib/unwind -lc++ -lc++abi -lunwind" \
+            -DCMAKE_MODULE_LINKER_FLAGS="-stdlib=libc++ -L$LLVM_PREFIX/lib/c++ -L$LLVM_PREFIX/lib/unwind -lc++ -lc++abi -lunwind" \
+            -DCMAKE_CXX_STDLIB_MODULES_JSON="$LLVM_PREFIX/lib/libc++.modules.json" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          # huxerui_add_app 在 APPLE 上产 .app bundle
+          hui=build/hui.app/Contents/MacOS/hui
+          test -x "$hui"
+          "$hui" selftest
+          "$hui" validate examples/*.hui.json
+          "$hui" catalog --json > /dev/null
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hui-macos-arm64
+          path: build/hui.app
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ---------------------------------------------------------------- Windows
+  build-windows:
+    name: build-windows-x86_64
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Fetch HuxerUI and apply local patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none "$HUXERUI_REPO" third_party/huxerui
+          git -C third_party/huxerui checkout "$HUXERUI_COMMIT"
+          for patch in "$PWD"/cmake/patches/*.patch; do
+            echo "applying $(basename "$patch")"
+            git -C third_party/huxerui apply "$patch"
+          done
+
+      - name: Ensure CMake >= 4.4 and Ninja
+        shell: pwsh
+        run: |
+          # `import std` 的 experimental UUID 门控要求 CMake ≥ 4.4
+          # （cmake/CxxImportStdGate.cmake）；runner 自带版本不够时 pip 补齐。
+          python -m pip install --quiet "cmake==4.4.2"
+          cmake --version | Select-Object -First 1
+          choco install ninja -y --no-progress
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        shell: pwsh
+        run: |
+          # The executable is a windows-subsystem one: these runs set the exit
+          # code but print nothing, so the code is the whole check.
+          $ErrorActionPreference = 'Stop'
+          & build/hui.exe selftest
+          if ($LASTEXITCODE -ne 0) { throw "hui selftest failed with $LASTEXITCODE" }
+          foreach ($file in Get-ChildItem examples/*.hui.json) {
+            & build/hui.exe validate $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "hui validate failed for $($file.Name)" }
+          }
+          & build/hui.exe catalog --json | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "hui catalog failed with $LASTEXITCODE" }
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hui-windows-x86_64
+          path: build/hui.exe
+          if-no-files-found: warn
+          retention-days: 14

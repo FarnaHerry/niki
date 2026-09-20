@@ -1,0 +1,151 @@
+diff --git a/include/huxerui/window.h b/include/huxerui/window.h
+index 78b8919..30ada12 100644
+--- a/include/huxerui/window.h
++++ b/include/huxerui/window.h
+@@ -33,6 +33,15 @@ enum class WindowChromeMode {
+   Custom, ///< Lets application content occupy title-bar space while HuxerUI preserves native window behavior.
+ };
+ 
++/// Selects who draws the minimize, maximize or restore, and close controls in Custom chrome.
++enum class WindowCaptionControls {
++  /// HuxerUI draws them inside the title-bar control area the platform reserves.
++  Framework,
++  /// The application draws its own controls; no control area is reserved, so WindowTitleBar places its children
++  /// across the full width.
++  Application,
++};
++
+ /// A top-level window operation understood by PlatformAdapter and WindowHandle.
+ enum class WindowCommand {
+   Minimize,      ///< Requests the platform's minimized state.
+@@ -134,6 +143,9 @@ struct WindowOptions {
+   /// Accessibility labels for framework-rendered desktop caption controls.
+   WindowCaptionLabels caption_labels{};
+ 
++  /// Who draws the caption controls in Custom chrome. Ignored in System chrome.
++  WindowCaptionControls caption_controls = WindowCaptionControls::Framework;
++
+   /// Compares all startup configuration fields exactly.
+   bool operator==(const WindowOptions&) const = default;
+ };
+diff --git a/modules/huxerui.cppm b/modules/huxerui.cppm
+index 3666240..6396cc8 100644
+--- a/modules/huxerui.cppm
++++ b/modules/huxerui.cppm
+@@ -573,6 +573,7 @@ export namespace huxerui {
+     using huxerui::VirtualList;
+     using huxerui::VirtualViewport;
+     using huxerui::VisualFill;
++    using huxerui::WindowCaptionControls;
+     using huxerui::WindowCaptionLabels;
+     using huxerui::WindowChromeMode;
+     using huxerui::WindowCommand;
+diff --git a/platform/linux/linux_adapter.cpp b/platform/linux/linux_adapter.cpp
+index d1cb4ef..dd83aa0 100644
+--- a/platform/linux/linux_adapter.cpp
++++ b/platform/linux/linux_adapter.cpp
+@@ -648,6 +648,7 @@ private:
+   void CreateWindow(const WindowOptions& options, Size initial_size) {
+     custom_chrome_ = options.chrome_mode == WindowChromeMode::Custom;
+     custom_title_bar_height_ = options.title_bar_height;
++    application_caption_controls_ = options.caption_controls == WindowCaptionControls::Application;
+     window_ = GTK_WINDOW(gtk_window_new());
+     gtk_window_set_title(window_, options.title.c_str());
+     gtk_window_set_default_size(
+@@ -774,7 +775,8 @@ private:
+     WindowMetrics metrics{.viewport = viewport, .safe_area = {}, .title_bar = std::nullopt};
+     if (custom_chrome_) {
+       metrics.title_bar = ResolveLinuxTitleBarMetrics(
+-          custom_title_bar_height_, viewport, window_ != nullptr && gtk_window_is_maximized(window_)
++          custom_title_bar_height_, viewport, window_ != nullptr && gtk_window_is_maximized(window_),
++          !application_caption_controls_
+       );
+     }
+     runtime_->SetWindowMetrics(metrics);
+@@ -1226,6 +1228,7 @@ private:
+   bool performing_close_ = false;
+   bool custom_chrome_ = false;
+   float custom_title_bar_height_ = 0.0F;
++  bool application_caption_controls_ = false;
+   PointerButton pressed_buttons_ = PointerButton::None;
+   bool suppress_pointer_release_ = false;
+   bool clipboard_read_active_ = false;
+diff --git a/platform/linux/linux_internal.h b/platform/linux/linux_internal.h
+index 6263d0b..ab4ed4a 100644
+--- a/platform/linux/linux_internal.h
++++ b/platform/linux/linux_internal.h
+@@ -57,7 +57,7 @@ ResolveLinuxResizeEdge(Point point, Size viewport, bool disabled) noexcept {
+ }
+ 
+ inline WindowTitleBarMetrics ResolveLinuxTitleBarMetrics(
+-    float preferred_height, Size viewport, bool maximized
++    float preferred_height, Size viewport, bool maximized, bool reserve_caption_controls = true
+ ) noexcept {
+   const float width = std::isfinite(viewport.width) ? std::max(0.0F, viewport.width) : 0.0F;
+   const float viewport_height = std::isfinite(viewport.height) ? std::max(0.0F, viewport.height) : 0.0F;
+@@ -65,7 +65,7 @@ inline WindowTitleBarMetrics ResolveLinuxTitleBarMetrics(
+   return {
+       .height = std::min(viewport_height, std::max(preferred, kLinuxMinTitleBarHeight)),
+       .left_inset = 0.0F,
+-      .right_inset = std::min(width, 3.0F * kLinuxCaptionButtonWidth),
++      .right_inset = reserve_caption_controls ? std::min(width, 3.0F * kLinuxCaptionButtonWidth) : 0.0F,
+       .maximized = maximized,
+   };
+ }
+diff --git a/src/application/window_internal.h b/src/application/window_internal.h
+index b64d58d..98d8e4d 100644
+--- a/src/application/window_internal.h
++++ b/src/application/window_internal.h
+@@ -28,11 +28,13 @@ inline Size ResolveInitialWindowSize(const WindowOptions& options) noexcept {
+ 
+ struct WindowState {
+   explicit WindowState(const WindowOptions& options)
+-      : content_mode(options.content_mode), chrome_mode(options.chrome_mode), caption_labels(options.caption_labels) {}
++      : content_mode(options.content_mode), chrome_mode(options.chrome_mode), caption_labels(options.caption_labels),
++        caption_controls(options.caption_controls) {}
+ 
+   WindowContentMode content_mode = WindowContentMode::SafeArea;
+   WindowChromeMode chrome_mode = WindowChromeMode::System;
+   WindowCaptionLabels caption_labels;
++  WindowCaptionControls caption_controls = WindowCaptionControls::Framework;
+   WindowMetrics metrics;
+   SystemBarsAppearance appearance = SystemBarsAppearance::Default();
+   Color caption_foreground = Color::Rgb(32, 32, 32);
+diff --git a/src/runtime/runtime.cpp b/src/runtime/runtime.cpp
+index 3d963eb..d643211 100644
+--- a/src/runtime/runtime.cpp
++++ b/src/runtime/runtime.cpp
+@@ -2564,9 +2564,12 @@ bool Runtime::RecomposeDirtyScopes(detail::MountedNode& mounted) {
+ 
+ void Runtime::EnsureRootStructure() {
+   if (state_->mounted_root_) {
++    const bool framework_controls =
++        state_->window_->chrome_mode == WindowChromeMode::Custom &&
++        state_->window_->caption_controls == WindowCaptionControls::Framework;
+     if (!FindWindowBackplane(*state_->mounted_root_) || !FindApplicationContent(*state_->mounted_root_) ||
+         !FindLayerStack(*state_->mounted_root_) ||
+-        (state_->window_->chrome_mode == WindowChromeMode::Custom && !FindWindowControls(*state_->mounted_root_))) {
++        (framework_controls && !FindWindowControls(*state_->mounted_root_))) {
+       throw std::logic_error("HuxerUI RuntimeRoot has an invalid child structure");
+     }
+     return;
+@@ -2598,7 +2601,8 @@ void Runtime::EnsureRootStructure() {
+   state_->mounted_root_->children.push_back(Mount(backplane.spec_, state_->root_environment_));
+   state_->mounted_root_->children.push_back(Mount(application.spec_, state_->root_environment_));
+   state_->mounted_root_->children.push_back(Mount(layers.spec_, state_->root_environment_));
+-  if (state_->window_->chrome_mode == WindowChromeMode::Custom) {
++  if (state_->window_->chrome_mode == WindowChromeMode::Custom &&
++      state_->window_->caption_controls == WindowCaptionControls::Framework) {
+     View controls = MakeWindowControls(
+         state_->window_service_,
+         state_->window_,
+@@ -2610,7 +2614,8 @@ void Runtime::EnsureRootStructure() {
+ }
+ 
+ void Runtime::ReconcileWindowControls() {
+-  if (!state_->mounted_root_ || state_->window_->chrome_mode != WindowChromeMode::Custom) {
++  if (!state_->mounted_root_ || state_->window_->chrome_mode != WindowChromeMode::Custom ||
++      state_->window_->caption_controls != WindowCaptionControls::Framework) {
+     return;
+   }
+   const auto found = std::ranges::find_if(state_->mounted_root_->children, [](const auto& child) {
