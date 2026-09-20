@@ -1,0 +1,24 @@
+{
+  "format": "hui/1",
+  "name": "LoginPage",
+  "root": {
+    "id": "n1",
+    "type": "Column",
+    "props": {
+      "spacing": 12
+    },
+    "modifiers": {
+      "padding": 24
+    },
+    "children": [
+      {
+        "id": "n2",
+        "type": "Text",
+        "props": {
+          "text": "LoginPage",
+          "role": "Title"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+// The whole build program for a HuxerUI application.
+
+import std;
+import mcpp;
+import huxerui.rules;
+
+int main() {
+    if (!huxerui::rules::configure({ .resources = "resources" })) return 1;
+
+    // ---------------------------------------------------------------- staging
+    // Workaround for HuxerUI#145: huxerui-build-rules compiles and merges the
+    // resource packages but never stages the result next to the executable, and
+    // the runtime looks for it at
+    //
+    //     <executable>.resources/huxerui/resources.bin
+    //
+    // (platform/linux/linux_adapter.cpp ResourceRoot()). Without that directory
+    // the first framework resource lookup throws — window caption strings,
+    // tree/select images, DatePicker month names.
+    //
+    // `hrc merge --output X` always writes X/package/…, which is why the CMake
+    // path copies X/package into the staging directory; mcpp has no copy
+    // action, so this action runs the merge and the copy in one shell. It is
+    // POSIX-only on purpose: it is a temporary shim.
+    //
+    // `mcpp::out_dir()` is the build program's scratch directory rather than
+    // the directory the executable lands in, so the destination is named with
+    // mcpp's ${mcpp.bin_dir} placeholder.
+    //
+    // Delete this block once HuxerUI#145 is fixed.
+    if (std::string_view(mcpp::target_os()) == "windows") {
+        std::cerr << "hui: framework resources are not staged on Windows "
+                     "(see HuxerUI#145); supply WindowCaptionLabels explicitly "
+                     "and avoid framework resources\n";
+        return 0;
+    }
+
+    const std::string hrc = mcpp::dep_bin("huxerui-resource-compiler", "hrc");
+    if (hrc.empty()) {
+        std::cerr << "hui: hrc is unavailable, so framework resources cannot be "
+                     "staged (see HuxerUI#145)\n";
+        return 0;
+    }
+
+    const std::string out = mcpp::out_dir();
+    const std::string builtin = out + "/hrc/builtin/package";
+    const std::string app = out + "/hrc/app/package";
+    const std::string deploy = "${mcpp.bin_dir}/" + std::string(mcpp::package_name()) + ".resources";
+
+    // $1 = destination, $2 = hrc, $3/$4 = input packages.
+    constexpr const char* kScript =
+        "set -e; "
+        "[ -n \"$1\" ] || exit 1; "
+        "rm -rf \"$1\"; mkdir -p \"$1\"; "
+        "\"$2\" merge --input \"$3\" --input \"$4\" --output \"$1/.stage\"; "
+        "cp -R \"$1/.stage/package\"/. \"$1\"/; "
+        "rm -rf \"$1/.stage\"";
+
+    mcpp::action stage;
+    stage.id = "hui:stage-resources";
+    stage.role = "source";
+    stage.description = "stage the merged HuxerUI resource package (HuxerUI#145)";
+    stage.arg("/bin/sh");
+    stage.arg("-c");
+    stage.arg(kScript);
+    stage.arg("sh");
+    stage.arg(deploy.c_str());
+    stage.arg(hrc.c_str());
+    stage.arg(builtin.c_str());
+    stage.arg(app.c_str());
+    stage.input((builtin + "/huxerui/resources.bin").c_str());
+    stage.input((app + "/huxerui/resources.bin").c_str());
+    stage.output((deploy + "/huxerui/resources.bin").c_str());
+    stage.submit();
+
+    return 0;
+}

@@ -1,0 +1,101 @@
+{
+  "format": "hui/1",
+  "name": "ProfileCard",
+  "root": {
+    "id": "n1",
+    "type": "Column",
+    "props": {
+      "spacing": 16,
+      "crossAlign": "Stretch"
+    },
+    "modifiers": {
+      "padding": 32
+    },
+    "children": [
+      {
+        "id": "n2",
+        "type": "Text",
+        "props": {
+          "text": "Ada Lovelace",
+          "role": "Title"
+        }
+      },
+      {
+        "id": "n3",
+        "type": "Row",
+        "props": {
+          "spacing": 8
+        },
+        "children": [
+          {
+            "id": "n4",
+            "type": "Chip",
+            "props": {
+              "label": "Analyst"
+            },
+            "events": {
+              "onChanged": ""
+            }
+          },
+          {
+            "id": "n5",
+            "type": "Chip",
+            "props": {
+              "label": "Engineer",
+              "selected": true
+            },
+            "events": {
+              "onChanged": "OnRoleToggled"
+            }
+          }
+        ]
+      },
+      {
+        "id": "n6",
+        "type": "TextField",
+        "props": {
+          "label": "Email",
+          "placeholder": "ada@example.com",
+          "variant": "Outlined"
+        },
+        "events": {
+          "onChanged": "OnEmailChanged",
+          "onSubmitted": "OnSave"
+        }
+      },
+      {
+        "id": "n7",
+        "type": "Row",
+        "props": {
+          "spacing": 8
+        },
+        "children": [
+          {
+            "id": "n8",
+            "type": "Spacer"
+          },
+          {
+            "id": "n9",
+            "type": "Button",
+            "props": {
+              "label": "Cancel"
+            },
+            "events": {
+              "onClick": "OnCancel"
+            }
+          },
+          {
+            "id": "n10",
+            "type": "Button",
+            "props": {
+              "label": "Save"
+            },
+            "events": {
+              "onClick": "OnSave"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

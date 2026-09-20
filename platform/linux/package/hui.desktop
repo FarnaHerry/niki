@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=hui
+Exec=hui
+Icon=hui
+Categories=Utility;
+Terminal=false

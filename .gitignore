@@ -1,0 +1,7 @@
+build/
+.huxerui/
+build-*/
+compile_commands.json
+target/
+traces/
+third_party/huxerui
