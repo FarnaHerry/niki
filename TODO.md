@@ -1,5 +1,19 @@
 # 待办
 
+## 已知问题
+
+### MSVC 的 std 模块少几个定义（已绕过）
+
+Windows 构建到链接阶段会缺 5 个符号：`_General_precision_tables_2<double/float>::_Max_P`
+和 `std::strong_ordering::less/equal/greater`。它们在标准头文件里有定义，但 MSVC 的
+std 模块编出来的对象里没有，于是「`import std;` 之后格式化一个浮点数或比较两个 string」
+就会引用到没人定义的符号。`src/core/msvc_std_anchors.cpp` 是全项目唯一一个 include
+标准头（而不是 import 模块）的 TU，取这五个地址把定义拉进链接。只对 `_MSC_VER` 生效；
+等 MSVC 的 std 模块带上这些定义即可删除。
+
+姊妹项目 apitab / llm-switch 没撞上，所以这不是工具链版本问题，而是本仓库的模块里确实
+用到了 `std::format` 的浮点路径和字符串排序。
+
 ## 待上游处理（本地已有绕过，不阻塞开发）
 
 ### 1. PR：`WindowCaptionControls`（框架 API 增补）

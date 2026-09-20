@@ -234,17 +234,22 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          # The executable is a windows-subsystem one: these runs set the exit
-          # code but print nothing, so the code is the whole check.
+          # The executable is a windows-subsystem one. PowerShell does not wait
+          # for such a process, and it leaves $LASTEXITCODE unset — which reads
+          # as "not zero" whatever the program did. Start-Process waits and
+          # reports the code; -NoNewWindow keeps the output in this log.
           $ErrorActionPreference = 'Stop'
-          & build/hui.exe selftest
-          if ($LASTEXITCODE -ne 0) { throw "hui selftest failed with $LASTEXITCODE" }
-          foreach ($file in Get-ChildItem examples/*.hui.json) {
-            & build/hui.exe validate $file.FullName
-            if ($LASTEXITCODE -ne 0) { throw "hui validate failed for $($file.Name)" }
+          function Invoke-Hui {
+            param([string[]] $Arguments, [string] $What)
+            $process = Start-Process -FilePath build/hui.exe -ArgumentList $Arguments `
+              -Wait -PassThru -NoNewWindow
+            if ($process.ExitCode -ne 0) { throw "$What failed with $($process.ExitCode)" }
           }
-          & build/hui.exe catalog --json | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "hui catalog failed with $LASTEXITCODE" }
+          Invoke-Hui @('selftest') 'hui selftest'
+          foreach ($file in Get-ChildItem examples/*.hui.json) {
+            Invoke-Hui @('validate', $file.FullName) "hui validate $($file.Name)"
+          }
+          Invoke-Hui @('catalog', '--json') 'hui catalog'
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
