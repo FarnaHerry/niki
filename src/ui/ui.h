@@ -147,6 +147,11 @@ struct Editor final {
 /// drop targets.
 [[nodiscard]] huxerui::View CanvasView(const Editor& ed);
 
+/// The node as it looks on the canvas, without any editor chrome — what a drag
+/// carries under the pointer. Used by both drag sources (a canvas node and a
+/// structure row), so a node is dragged as itself wherever it is picked up.
+[[nodiscard]] huxerui::View NodePreview(const Editor& ed, const std::string& id);
+
 /// Inspector island: the selected node's properties, modifiers, and events —
 /// or the document itself when nothing is selected — over the live issue list.
 [[nodiscard]] huxerui::View InspectorView(const Editor& ed);

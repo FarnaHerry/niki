@@ -1,6 +1,7 @@
 #include "ui/ui.h"
 
 #include <cstddef>
+#include <format>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,12 +20,20 @@ namespace {
       Text(def != nullptr ? def->glyph : "?", TextRole::Label).With(Frame{.width = 18.0F}),
       Text(node.type, TextRole::Label),
       Text(summary == node.type ? std::string() : summary, TextRole::Label).With(Opacity(0.55F), Grow(1.0F)),
+      // Bound events are worth seeing here: they are the reason a node behaves
+      // differently from its siblings in the running application.
+      Text(node.events.empty() ? std::string() : std::format("⚡ {}", node.events.size()), TextRole::Label)
+          .With(Opacity(0.6F)),
       Text(id, TextRole::Label).With(Opacity(0.4F)),
   }
       .With(Spacing(6.0F),
             Padding(EdgeInsets{.top = 3.0F, .bottom = 3.0F,
                                .left = 4.0F + static_cast<float>(depth) * 14.0F}),
             CrossAlign(CrossAxisAlignment::Center), CornerRadius(4.0F))
+      // A row is a way to pick a node up as well as to select it: dragging one
+      // onto a canvas container moves the node there, and it travels as itself.
+      .With(DragSource(DropPayload{.move = true, .ref = id},
+                       [ed, id]() -> View { return NodePreview(ed, id); }))
       .OnClick([ed, id] {
         ed.Select(id);
         ed.SetStatus("selected " + id);

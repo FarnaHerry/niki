@@ -341,13 +341,8 @@ struct ResizePayload final {
   // that is already on the canvas shows that card, not a stand-in for it. The
   // node is looked up by id when the preview is built, so nothing is copied on
   // every canvas render and the preview tracks the live document.
-  view = std::move(view).With(DragSource(DropPayload{.move = true, .ref = id}, [ed, id]() -> View {
-    const doc::Node* live = doc::FindNode(ed.Document(), id);
-    if (live == nullptr) {
-      return Text(id, TextRole::Label);
-    }
-    return BuildNode(ed, *live, /*editor_chrome=*/false);
-  }));
+  view = std::move(view).With(DragSource(DropPayload{.move = true, .ref = id},
+                                         [ed, id]() -> View { return NodePreview(ed, id); }));
 
   // A container accepts a card from the palette (create) and a node already on
   // the canvas (relocate) through the same payload type.
@@ -396,6 +391,14 @@ struct ResizePayload final {
 }
 
 }  // namespace
+
+View NodePreview(const Editor& ed, const std::string& id) {
+  const doc::Node* node = doc::FindNode(ed.Document(), id);
+  if (node == nullptr) {
+    return Text(id, TextRole::Label);
+  }
+  return BuildNode(ed, *node, /*editor_chrome=*/false);
+}
 
 View CanvasView(const Editor& ed) {
   const doc::Document& document = ed.Document();
