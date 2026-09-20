@@ -18,6 +18,15 @@ import hui.core.doc;
 
 namespace hui::ui {
 
+/// The one drag payload the designer speaks. One payload type means a container
+/// needs a single DropTarget: a palette card creates a node (move = false,
+/// ref = component type), a node already on the canvas relocates (move = true,
+/// ref = node id).
+struct DropPayload final {
+  bool move = false;
+  std::string ref;
+};
+
 /// Shared designer state, threaded through every panel. Holds the
 /// composition-scoped document/selection/status/history handles, the active
 /// palette, and the single place a document mutation is published from.
@@ -45,5 +54,9 @@ struct Editor final {
 /// over the document structure tree.
 [[nodiscard]] huxerui::View PaletteView(const Editor& ed);
 [[nodiscard]] huxerui::View StructureView(const Editor& ed);
+
+/// Canvas island: the document rendered with the real components it stands
+/// for, with click-to-select, drag-to-relocate, and container drop targets.
+[[nodiscard]] huxerui::View CanvasView(const Editor& ed);
 
 }  // namespace hui::ui

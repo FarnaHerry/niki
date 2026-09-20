@@ -1,5 +1,6 @@
 #include "ui/ui.h"
 
+#include <chrono>
 #include <format>
 #include <string>
 #include <utility>
@@ -35,8 +36,12 @@ void AddComponent(const Editor& ed, const std::string& type) {
   ed.status = std::format("added {} as {} under {}", type, id, parent);
 }
 
+/// One palette card. Clicking appends the component to the selected container;
+/// dragging it carries the same payload a canvas node would, so a container's
+/// drop target places it without the palette knowing which container it is.
 [[nodiscard]] View Card(const Editor& ed, const catalog::ComponentDef& component) {
   const std::string type = component.type;
+  const std::string glyph = component.glyph;
   return Row{
       Text(component.glyph, TextRole::Label).With(Frame{.width = 22.0F}),
       Text(component.type, TextRole::Label).With(Grow(1.0F)),
@@ -44,6 +49,17 @@ void AddComponent(const Editor& ed, const std::string& type) {
       .With(Spacing(8.0F), Padding(6.0F), CrossAlign(CrossAxisAlignment::Center),
             Background(ed.palette.card_bg), Border{.color = ed.palette.card_border, .width = 1.0F},
             CornerRadius(6.0F))
+      .With(DragSource(
+          DropPayload{.move = false, .ref = type},
+          [type, glyph, card_bg = ed.palette.card_bg, accent = ed.palette.accent] {
+            return Row{
+                Text(glyph + " " + type, TextRole::Label),
+                Text("new component", TextRole::Label).With(Opacity(0.6F)),
+            }
+                .With(Spacing(8.0F), Padding(8.0F), Background(card_bg),
+                      Border{.color = accent, .width = 1.0F}, CornerRadius(6.0F));
+          },
+          DragGesture{.minimum_press_duration = std::chrono::milliseconds(120)}))
       .OnClick([ed, type] { AddComponent(ed, type); });
 }
 

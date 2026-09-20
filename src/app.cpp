@@ -20,18 +20,24 @@ using namespace huxerui;
 namespace {
 
 /// One floating panel: rounded surface, hairline border, header, then body.
+/// The body stretches, and scrolls when `scroll` is set — a panel taller than
+/// the window scrolls instead of pushing the row it sits in. A panel that
+/// arranges its own scrolling (the canvas pins a status line under its viewport)
+/// passes `scroll = false`.
 [[nodiscard]] View Island(std::string title, std::string hint, View body,
-                          const hui::theme::Palette& palette) {
+                          const hui::theme::Palette& palette, bool scroll = true) {
+  View content = scroll ? View(ScrollView(std::move(body))) : std::move(body);
   return Column{
       Row{
           Text(std::move(title), TextRole::Label),
           Spacer(),
           Text(std::move(hint), TextRole::Label).With(Opacity(0.45F)),
       }.With(CrossAlign(CrossAxisAlignment::Center)),
-      std::move(body),
+      std::move(content).With(Grow(1.0F)),
   }
-      .With(Padding(12.0F), Spacing(10.0F), Background(palette.panel_bg),
-            Border{.color = palette.card_border, .width = 1.0F}, CornerRadius(12.0F));
+      .With(Padding(12.0F), Spacing(10.0F), CrossAlign(CrossAxisAlignment::Stretch),
+            Background(palette.panel_bg), Border{.color = palette.card_border, .width = 1.0F},
+            CornerRadius(12.0F));
 }
 
 [[nodiscard]] View RegionPlaceholder(std::string text) {
@@ -104,10 +110,11 @@ View Designer() {
                          hui::ui::PaletteView(ed),
                          Divider(),
                          hui::ui::StructureView(ed),
-                     }.With(Spacing(8.0F)),
+                     }.With(Spacing(8.0F), CrossAlign(CrossAxisAlignment::Stretch)),
                      palette)
                   .With(Frame{.width = 260.0F}),
-              Island("Canvas", "centre · grow", RegionPlaceholder("canvas region"), palette).With(Grow(1.0F)),
+              Island("Canvas", "centre · grow", hui::ui::CanvasView(ed), palette, /*scroll=*/false)
+                  .With(Grow(1.0F)),
               Island("Inspector", "right · 320", RegionPlaceholder("inspector region"), palette)
                   .With(Frame{.width = 320.0F}),
           }.With(Spacing(10.0F), Grow(1.0F), CrossAlign(CrossAxisAlignment::Stretch)),
