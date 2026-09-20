@@ -214,16 +214,18 @@ src/ui/              设计器界面（普通头文件 + .cpp，import 引擎模
   inspector.cpp        检查器：属性/修饰符/事件 + 节点上下移与删除 + 问题列表
   codepanel.cpp        代码岛：C++ / JSON 双页签 + 复制
   tabs.cpp             标签页条（文件名 + 未保存标记 + 关闭 + 新建）
-  canvas.cpp           画布：文档实时渲染、选择、拖放
+  canvas.cpp           画布：文档实时渲染、选择、拖放、八点拉伸
   palette.cpp          组件面板（拖拽源）
-  structure.cpp        结构树
+  structure.cpp        结构树（可拖拽重定位，⚡ 标记已绑定事件的节点）
 src/app.cpp          应用壳（标题栏、标签页、工具栏、岛屿布局、Application 注册）
 resources/           打包资源
 examples/            示例文档（counter / login / profile_card，均含事件绑定）
-old/                 mcpp 时代的归档（模块化 UI、build.mcpp、画布早期步骤）
 ```
 
 核心与界面严格分离：`src/core` 不依赖 HuxerUI，CLI 与 MCP 完全无头运行。
+
+> mcpp 时代的实现（`mcpp.toml` / `build.mcpp` / 模块化 UI / 画布早期步骤）在 git 历史里，
+> 见 `b1eba51`；工作区只保留当前这一套。
 
 ## 当前范围与后续
 
