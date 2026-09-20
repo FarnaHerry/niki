@@ -8,6 +8,7 @@
 #include <huxerui/huxerui.h>
 
 #include <format>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,10 +56,6 @@ View Designer() {
   auto active = UseState(std::size_t{0});
   auto status = UseState(std::string("welcome — click a component in the palette"));
   auto drop_hint = UseState(std::string(""));
-  // The path field is the one thing the shell keeps per page rather than reading
-  // from it, because a TextField holds the caret as well as the text. Every tab
-  // switch, open, and new page re-points it through SyncPath.
-  auto path = UseState(TextEditingValue::FromText("counter_page.hui.json"));
 
   const hui::theme::Palette palette = dark.Get() ? hui::theme::DarkPalette() : hui::theme::LightPalette();
   const hui::ui::Editor ed{
@@ -69,7 +66,11 @@ View Designer() {
       .palette = palette,
   };
   const WindowHandle window = UseWindow();
-  const auto sync_path = [ed, path] { path = TextEditingValue::FromText(ed.Current().path); };
+
+  // A tab is a file, so there is no document-path field to keep in step with
+  // the tabs: Open asks the desktop for one and Save uses the page's own.
+  auto tasks = UseTaskScope();
+  const auto picker = UseService<FilePicker>();
 
   View body = Column{
       // Title bar. caption_controls = Application keeps the framework from
@@ -87,27 +88,35 @@ View Designer() {
       }.With(Spacing(6.0F), Padding(EdgeInsets{.top = 4.0F, .right = 6.0F, .bottom = 4.0F, .left = 10.0F}),
              Background(palette.bar_bg)),
 
-      // One tab per page. Everything below this strip shows the active page.
-      hui::ui::TabStripView(ed, sync_path),
+      // One tab per page, and a tab is the page's file. Everything below this
+      // strip shows the active page.
+      hui::ui::TabStripView(ed),
 
       // File and edit toolbar.
       Row{
-          TextField(path.Get())
-              .Placeholder("document path (.hui.json)")
-              .OnChanged([path](const TextEditingValue& next) { path = next; })
-              .With(Grow(1.0F)),
-          hui::icons::Action(hui::icons::New(), "New page").OnClick([ed, sync_path] {
-            ed.NewPage();
-            sync_path();
+          hui::icons::Action(hui::icons::New(), "New page").OnClick([ed] { ed.NewPage(); }),
+          hui::icons::Action(hui::icons::Open(), "Open a document in its own tab").OnClick([ed, picker, tasks] {
+            if (!picker || !picker->CanOpenFiles()) {
+              ed.SetStatus("this desktop offers no file dialog; run `hui help` for the CLI");
+              return;
+            }
+            tasks.Launch([ed, picker]() -> Task<void> {
+              const std::optional<FileReference> chosen =
+                  co_await picker->OpenFileAsync(FilePickerFilter{.name = "hui document",
+                                                                  .extensions = {"json"}});
+              if (!chosen.has_value()) {
+                co_return;
+              }
+              const std::optional<File> file = chosen->AsFile();
+              if (!file.has_value()) {
+                ed.SetStatus("the chosen file has no local path");
+                co_return;
+              }
+              ed.Open(file->Path());
+            });
           }),
-          hui::icons::Action(hui::icons::Open(), "Open document in a new tab")
-              .OnClick([ed, path, sync_path] {
-                ed.Open(path.Get().text);
-                sync_path();
-              }),
-          hui::icons::Action(hui::icons::Save(), "Save document").OnClick([ed, path] { ed.Save(path.Get().text); }),
-          hui::icons::Action(hui::icons::Export(), "Export C++ module")
-              .OnClick([ed, path] { ed.Export(path.Get().text); }),
+          hui::icons::Action(hui::icons::Save(), "Save").OnClick([ed] { ed.Save(); }),
+          hui::icons::Action(hui::icons::Export(), "Export C++ module").OnClick([ed] { ed.Export(); }),
           Divider(Axis::Vertical).With(Frame{.height = 20.0F}),
           hui::icons::Action(hui::icons::Undo(), "Undo").OnClick([ed] { ed.Undo(); }),
           hui::icons::Action(hui::icons::Redo(), "Redo").OnClick([ed] { ed.Redo(); }),

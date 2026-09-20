@@ -33,9 +33,12 @@ struct DropPayload final {
 /// One page: a document plus everything that belongs to it. Tabs hold one of
 /// these each, so switching tabs is a change of index and never a migration of
 /// state between slots.
+///
+/// A page and its file are the same thing seen twice: `path` is the file, and
+/// `title` is the name its tab shows — the file's own name once it has one.
 struct Page final {
-  std::string title;      // tab label
-  std::string path;       // where Save writes; Open fills it
+  std::string title;      // tab label: the file name, or a placeholder name
+  std::string path;       // the file itself; empty until the first Save
   doc::Document document;
   doc::History history;
   std::string selection;  // selected node id, empty when nothing is selected
@@ -90,15 +93,20 @@ struct Editor final {
 
   void Undo() const;
   void Redo() const;
+  /// Opens a file in its own tab, or switches to it when it is already open.
   void Open(const std::string& file) const;
-  void Save(const std::string& file) const;
-  void Export(const std::string& file) const;
+  /// Writes the active page to its own file, giving it one derived from its
+  /// title when it has never been saved.
+  void Save() const;
+  /// Writes the active page to `file` and adopts that file as the page's own.
+  void SaveAs(const std::string& file) const;
+  /// Generates the active page's C++ module next to its own file.
+  void Export() const;
 };
 
-/// Tab strip: one tab per page, each with a close button, plus the add button.
-/// `on_tab_changed` runs after any switch, add, or close so the shell can
-/// re-point whatever it keeps per page (the path field).
-[[nodiscard]] huxerui::View TabStripView(const Editor& ed, std::function<void()> on_tab_changed);
+/// Tab strip: one tab per page, each showing the file it is, with a close
+/// button, plus the add button.
+[[nodiscard]] huxerui::View TabStripView(const Editor& ed);
 
 /// Components island: one card per catalog component, grouped by category,
 /// over the document structure tree.

@@ -15,14 +15,14 @@ import hui.core.docio;
 namespace hui::ui {
 namespace {
 
-/// The tab label for a path: the file stem, or the document's own name when the
-/// page has never been saved.
-[[nodiscard]] std::string TitleFor(const std::string& path, const doc::Document& document) {
+/// The tab label for a path: the file's own name. A page that has no file yet
+/// keeps whatever name it was started with.
+[[nodiscard]] std::string NameFor(const std::string& path, const doc::Document& document) {
   if (path.empty()) {
     return document.name;
   }
-  std::string stem = std::filesystem::path(path).stem().string();
-  return stem.empty() ? document.name : stem;
+  std::string name = std::filesystem::path(path).filename().string();
+  return name.empty() ? document.name : name;
 }
 
 /// "NewPage" -> "new_page", so a page's default file name follows the CLI's.
@@ -47,7 +47,7 @@ Page StarterPage(std::string title, std::string path) {
   Page page;
   page.document = doc::StarterDocument(title.empty() ? std::string("NewPage") : title);
   page.path = std::move(path);
-  page.title = title.empty() ? TitleFor(page.path, page.document) : std::move(title);
+  page.title = title.empty() ? NameFor(page.path, page.document) : std::move(title);
   return page;
 }
 
@@ -95,7 +95,7 @@ void Editor::AddPage(std::string title, std::string path, doc::Document document
   Page page;
   page.document = std::move(document);
   page.path = std::move(path);
-  page.title = title.empty() ? TitleFor(page.path, page.document) : std::move(title);
+  page.title = title.empty() ? NameFor(page.path, page.document) : std::move(title);
   pages.PushBack(std::move(page));
   active = pages.Size() - 1;
   drop_hint = std::string();
@@ -103,7 +103,9 @@ void Editor::AddPage(std::string title, std::string path, doc::Document document
 
 void Editor::NewPage() const {
   const std::string name = std::format("Page{}", pages.Size() + 1);
-  AddPage(name, SnakeCase(name) + ".hui.json", doc::StarterDocument(name));
+  // A new page has no file yet: its tab shows the name, and Save gives it a
+  // file derived from that name.
+  AddPage(name, std::string(), doc::StarterDocument(name));
   status = std::format("new page {}", name);
 }
 
@@ -198,7 +200,15 @@ void Editor::Open(const std::string& file) const {
   status = "opened " + file;
 }
 
-void Editor::Save(const std::string& file) const {
+void Editor::Save() const {
+  const Page& page = Current();
+  // A page that has never been saved writes to a file named after its tab. The
+  // path is reported in the status line, so where the file landed is never a
+  // guess.
+  SaveAs(page.path.empty() ? SnakeCase(page.title) + ".hui.json" : page.path);
+}
+
+void Editor::SaveAs(const std::string& file) const {
   if (file.empty()) {
     status = std::string("set a document path first");
     return;
@@ -210,17 +220,17 @@ void Editor::Save(const std::string& file) const {
   }
   Edit([&file](Page& page) {
     page.path = Normalize(file);
-    page.title = TitleFor(page.path, page.document);
+    page.title = NameFor(page.path, page.document);
     page.dirty = false;
   });
   status = "saved " + file;
 }
 
-void Editor::Export(const std::string& file) const {
-  if (file.empty()) {
-    status = std::string("set a document path first");
-    return;
-  }
+void Editor::Export() const {
+  const Page& page = Current();
+  const std::filesystem::path file =
+      page.path.empty() ? std::filesystem::path(SnakeCase(page.title) + ".hui.json")
+                        : std::filesystem::path(page.path);
   const std::filesystem::path cpp_path = std::filesystem::path(file).replace_extension(".cppm");
   const std::string code =
       codegen::GenerateCpp(Document(),
