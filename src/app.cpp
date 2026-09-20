@@ -75,27 +75,15 @@ View Designer() {
   const auto picker = UseService<FilePicker>();
 
   View body = Column{
-      // Title bar. caption_controls = Application keeps the framework from
-      // adding a second set of window buttons or reserving a caption area.
+      // Title bar: the window's own controls live here, and so does everything
+      // the document is acted on with — file, edit, and the window buttons are
+      // one row, identity on the left and window chrome on the right.
+      // caption_controls = Application keeps the framework from adding a second
+      // set of window buttons or reserving a caption area for them.
       WindowTitleBar{
           Text("hui", TextRole::Title),
           Text(ed.Current().title, TextRole::Label).With(Opacity(0.6F)),
-          Spacer(),
-          hui::icons::Action(hui::icons::Theme(), dark.Get() ? "Use light theme" : "Use dark theme")
-              .OnClick([dark] { dark = !dark.Get(); }),
-          hui::icons::Action(hui::icons::Minimize(), "Minimize").OnClick([window] { window.Minimize(); }),
-          hui::icons::Action(hui::icons::Maximize(), "Maximize or restore")
-              .OnClick([window] { window.ToggleMaximize(); }),
-          hui::icons::Action(hui::icons::Close(), "Close").OnClick([window] { window.Close(); }),
-      }.With(Spacing(6.0F), Padding(EdgeInsets{.top = 4.0F, .right = 6.0F, .bottom = 4.0F, .left = 10.0F}),
-             Background(palette.bar_bg)),
-
-      // One tab per page, and a tab is the page's file. Everything below this
-      // strip shows the active page.
-      hui::ui::TabStripView(ed),
-
-      // File and edit toolbar.
-      Row{
+          Divider(Axis::Vertical).With(Frame{.height = 18.0F}, Opacity(0.5F)),
           hui::icons::Action(hui::icons::New(), "New page").OnClick([ed] { ed.NewPage(); }),
           hui::icons::Action(hui::icons::Open(), "Open a document in its own tab").OnClick([ed, picker, tasks] {
             if (!picker || !picker->CanOpenFiles()) {
@@ -119,11 +107,22 @@ View Designer() {
           }),
           hui::icons::Action(hui::icons::Save(), "Save").OnClick([ed] { ed.Save(); }),
           hui::icons::Action(hui::icons::Export(), "Export C++ module").OnClick([ed] { ed.Export(); }),
-          Divider(Axis::Vertical).With(Frame{.height = 20.0F}),
+          Divider(Axis::Vertical).With(Frame{.height = 18.0F}, Opacity(0.5F)),
           hui::icons::Action(hui::icons::Undo(), "Undo").OnClick([ed] { ed.Undo(); }),
           hui::icons::Action(hui::icons::Redo(), "Redo").OnClick([ed] { ed.Redo(); }),
-      }.With(Spacing(6.0F), Padding(EdgeInsets{.top = 4.0F, .right = 10.0F, .bottom = 4.0F, .left = 10.0F}),
+          Spacer(),
+          hui::icons::Action(hui::icons::Theme(), dark.Get() ? "Use light theme" : "Use dark theme")
+              .OnClick([dark] { dark = !dark.Get(); }),
+          hui::icons::Action(hui::icons::Minimize(), "Minimize").OnClick([window] { window.Minimize(); }),
+          hui::icons::Action(hui::icons::Maximize(), "Maximize or restore")
+              .OnClick([window] { window.ToggleMaximize(); }),
+          hui::icons::Action(hui::icons::Close(), "Close").OnClick([window] { window.Close(); }),
+      }.With(Spacing(4.0F), Padding(EdgeInsets{.top = 4.0F, .right = 6.0F, .bottom = 4.0F, .left = 10.0F}),
              CrossAlign(CrossAxisAlignment::Center), Background(palette.bar_bg)),
+
+      // One tab per page, and a tab is the page's file. Everything below this
+      // strip shows the active page.
+      hui::ui::TabStripView(ed),
 
       // Content islands: components+structure | canvas | inspector, over the code island.
       Column{
